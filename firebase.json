@@ -1,6 +1,14 @@
 {
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  }
+    "hosting": {
+        "rewrites": [
+            {
+                "source": "**",
+                "function": "app"
+            }
+        ]
+    },
+    "firestore": {
+        "rules": "firestore.rules",
+        "indexes": "firestore.indexes.json"
+    }
 }

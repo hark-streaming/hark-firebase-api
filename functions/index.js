@@ -1,10 +1,36 @@
 // The Cloud Functions for Firebase SDK to create Cloud Functions and setup triggers.
 const functions = require('firebase-functions');
 
+// Express setup
+const express = require('express');
+const app = express();
+
 // The Firebase Admin SDK to access Firestore.
 const admin = require('firebase-admin');
 admin.initializeApp();
 
+// the firestore database
+const db = admin.firestore();
+
+
+app.get('/', (req, res) => {
+    res.send("homepage baby");
+});
+
+app.get('/test', (req, res) => {
+    res.send("test route babye");
+});
+
+
+app.post('/write', async (req, res) => {
+    await db.collection('messages').add({entry: req.body.text, number: req.body.balls});
+    res.send("success");
+});
+
+// Export the express js app as api
+exports.api = functions.https.onRequest(app);
+
+/*
 
 // Take the text parameter passed to this HTTP endpoint and insert it into 
 // Firestore under the path /messages/:documentId/original
@@ -36,7 +62,7 @@ exports.makeUppercase = functions.firestore.document('/messages/{documentId}')
     });
 
 exports.testFunction = functions.https.onRequest(async (req, res) => {
-
+    res.send("i have been called");
 });
 
 // // Create and Deploy Your First Cloud Functions
@@ -47,3 +73,4 @@ exports.helloWorld = functions.https.onRequest((request, response) => {
   response.send("Hello from Firebase!");
 });
 
+*/
