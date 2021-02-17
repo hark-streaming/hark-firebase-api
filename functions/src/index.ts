@@ -2,6 +2,7 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import * as usersApi from "./api/users";
+import * as cors from 'cors';
 
 //admin.initializeApp(functions.config().firebase);
 // reminder: https://stackoverflow.com/questions/57397608/the-default-firebase-app-does-not-exist-make-sure-you-call-initializeapp-befo
@@ -10,6 +11,16 @@ admin.initializeApp();
 const app = express();
 // https://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
 app.disable("x-powered-by");
+
+// options for cors
+// TODO: change origin permissions
+var corsOptions = {
+    origin: "*",
+    optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+  }
+
+// enable cors
+app.use(cors(corsOptions));
 
 // Any requests to /api/users will be routed to the user router!
 app.use("/users", usersApi.userRouter);
@@ -26,15 +37,15 @@ exports.api = functions.https.onRequest(app);
 // additional listeners
 
 // adds user to database upon creation
-exports.addUserToDb = functions.auth.user().onCreate(async (user) => {
+/*exports.addUserToDb = functions.auth.user().onCreate(async (user) => {
     // the firestore
     const db = admin.firestore();
     await db.collection("users").doc(user.uid).set({
-        username: user.displayName,
+        //username: user.displayName,
         email: user.email,
         uid: user.uid,
-        /*password: this.user.password,
-        captcha: this.captchaToken,*/
-    });
-});
+        //password: this.user.password,
+        //captcha: this.captchaToken,
+    }); 
+});*/
 

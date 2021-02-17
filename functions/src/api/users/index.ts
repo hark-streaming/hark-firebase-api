@@ -21,17 +21,33 @@ userRouter.get("/:uid", async function getUser(req: express.Request, res: expres
 });
 
 userRouter.post("/register", async function getUser(req: express.Request, res: express.Response) {
+    // TODO: check the captcha token (req.body.captchaToken)
+
     // the firestore
     const db = admin.firestore();
        
-    await db.collection("users").doc("testregister").set({
-            username: req.body.username,
-            email: req.body.email,
-            password: req.body.password,
-            captcha: req.body.captchaToken,
+    // register the user with email, password, username
+    // TODO: error handling (maybe add a middleware?)
+    let userRecord = await admin.auth().createUser({
+        email: req.body.email,
+        emailVerified: false,
+        password: req.body.password,
+        displayName: req.body.username,
+        photoURL: 'http://www.example.com/12345678/photo.png',
+        disabled: false,
     });
 
-    res.status(200).send("User registered!");
+    // add an entry into the firestore with their data
+    await db.collection("users").doc(userRecord.uid).set({
+            uid: userRecord.uid,    
+            username: req.body.username,
+            email: req.body.email,
+            streamkey: "",
+            //password: req.body.password,
+            //captcha: req.body.captchaToken,
+    });
+
+    res.status(200).send("User successfully registered!");
 });
 
 
