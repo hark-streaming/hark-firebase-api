@@ -2,8 +2,7 @@
 import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
-
-
+import * as functions from "firebase-functions";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
@@ -24,24 +23,34 @@ userRouter.get("/:uid", async function getUser(req: express.Request, res: expres
 userRouter.post("/register", async function getUser(req: express.Request, res: express.Response) {
     
     // TODO: check the captcha token (req.body.captcha)
-    const hcaptchaRes = await axios.post(`https://www.google.com/recaptcha/api/siteverify?secret=${process.env.HCAPTCHA_SECRET_KEY}&response=${req.body.captcha}`,
-        {},
-        {
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"
-            },
-        },
-    );
-
-    if(!hcaptchaRes.data.success) {
-        // TODO: firgure out error handling
-        // return res.status(501).json({
+    // Verify captcha token with hcaptcha
+    const params = new URLSearchParams();
+    params.append('response', req.body.captcha);
+    params.append('secret', functions.config().hcaptcha_secret.key);
+    const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
+    
+    // register the user if captcha passes
+    let response;
+    let status;
+    if(hcaptchaRes.data.success) {
+        response = await registerUser(req);
+        status = response.status;
+    }
+    else {
+        status = 500;
+        // response = {
         //     success: false,
-        //     message: "oh noooo"
-        // });
+        //     message: "fail captcha",
+        //     hres: hcaptchaRes
+        // };
+        response = hcaptchaRes.data;
     }
 
+    res.status(status).json(response);
+    
+});
 
+async function registerUser(req: express.Request){
     // the firestore
     const db = admin.firestore();
        
@@ -62,16 +71,15 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
             username: req.body.username,
             email: req.body.email,
             streamkey: "",
-            //password: req.body.password,
-            //captcha: req.body.captchaToken,
     });
 
-    res.status(200).json({
+    // return a json response
+    return {
         success: true,
-        message: "oh yeahhh"
-    });
-});
-
+        status: 200,
+        message: "oh yeah user registered"
+    };
+}
 
 // Useful: Let's make sure we intercept un-matched routes and notify the client with a 404 status code
 userRouter.get("*", async (req: express.Request, res: express.Response) => {
