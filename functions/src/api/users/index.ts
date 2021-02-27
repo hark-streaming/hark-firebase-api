@@ -8,6 +8,7 @@ import * as functions from "firebase-functions";
 // api hub (the index.ts which will be sent to Firebase Functions).
 export let userRouter = express.Router();
 
+// this method is basically just a test and can remove later
 // Now that we have a router, we can define routes which this router
 // will handle. Please look into the Express documentation for more info.
 userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
@@ -20,9 +21,9 @@ userRouter.get("/:uid", async function getUser(req: express.Request, res: expres
   // ...
 });
 
+// registers a default user (cannot stream)
 userRouter.post("/register", async function getUser(req: express.Request, res: express.Response) {
     
-    // TODO: check the captcha token (req.body.captcha)
     // Verify captcha token with hcaptcha
     const params = new URLSearchParams();
     params.append('response', req.body.captcha);
@@ -38,11 +39,7 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
     }
     else {
         status = 500;
-        // response = {
-        //     success: false,
-        //     message: "fail captcha",
-        //     hres: hcaptchaRes
-        // };
+
         response = hcaptchaRes.data;
     }
 
@@ -50,6 +47,7 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
     
 });
 
+// registers a user to firebase given the basic information
 async function registerUser(req: express.Request){
     // the firestore
     const db = admin.firestore();
@@ -79,6 +77,17 @@ async function registerUser(req: express.Request){
         status: 200,
         message: "oh yeah user registered"
     };
+}
+
+// verifies the hcaptcha and returns the result
+async function verifyCaptcha(req: express.Request){
+    // Verify captcha token with hcaptcha
+    const params = new URLSearchParams();
+    params.append('response', req.body.captcha);
+    params.append('secret', functions.config().hcaptcha_secret.key);
+    const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
+
+    return hcaptchaRes;
 }
 
 // Useful: Let's make sure we intercept un-matched routes and notify the client with a 404 status code
