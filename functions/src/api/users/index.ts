@@ -101,7 +101,7 @@ async function registerUser(req: express.Request) {
             name: req.body.username,
             owner: userRecord.uid,
             avatar: "https://cdn.bitwave.tv/uploads/v2/avatar/c94aa96a-2b2b-4f33-a426-ad709f30c72f-128.png",
-            to: "/" + req.body.username,
+            to: "/channel/" + req.body.username,
             banned: false
         });
     }
