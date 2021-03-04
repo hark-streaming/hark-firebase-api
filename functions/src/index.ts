@@ -5,6 +5,7 @@ import * as cors from 'cors';
 
 import * as usersApi from "./api/users";
 import * as channelApi from "./api/channel";
+import * as locationApi from "./api/location";
 
 //admin.initializeApp(functions.config().firebase);
 // reminder: https://stackoverflow.com/questions/57397608/the-default-firebase-app-does-not-exist-make-sure-you-call-initializeapp-befo
@@ -30,6 +31,9 @@ app.use("/users", usersApi.userRouter);
 
 // route /channel requests
 app.use("/channel", channelApi.channelRouter);
+
+// you get the gist
+app.use("/location", locationApi.locationRouter);
 
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
