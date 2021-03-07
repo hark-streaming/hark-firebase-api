@@ -14,14 +14,14 @@ admin.initializeApp();
 const app = express();
 // https://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
 // also not working for some reason?
-app.disable("x-powered-by"); 
+app.disable("x-powered-by");
 
 // options for cors
 // TODO: change origin permissions
 var corsOptions = {
     origin: "*",
     optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-  }
+}
 
 // enable cors
 app.use(cors(corsOptions));
@@ -34,6 +34,58 @@ app.use("/channel", channelApi.channelRouter);
 
 // you get the gist
 app.use("/location", locationApi.locationRouter);
+
+// endpoint for jwt token auth for theta
+app.post("/jwtauth", async (req: express.Request, res: express.Response) => {
+    /* expected query in body
+    {
+        idToken: firebaseidtoken
+    }
+    */
+
+    let status = 0;
+    let response;
+
+    // get the decoded id token from the firebase id token sent from frontend
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+
+        // taken from theta email
+        const jwt = require('jsonwebtoken');
+        const algorithm = { algorithm: "HS256" };
+        let apiKey = functions.config().theta.api_key;
+        let apiSecret = functions.config().theta.api_secret;
+        let userId = decodedToken.uid;
+        
+        function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
+            let expiration = new Date().getTime() / 1000;
+            expiration += 120; // 2 minutes is what we use
+            let payload = {
+                api_key: apiKey,
+                user_id: userId,
+                iss: "auth0",
+                exp: expiration
+            };
+            return jwt.sign(payload, apiSecret, algorithm);
+        }
+
+        status = 200;
+        response = genAccessToken(apiKey, apiSecret, userId);
+
+        
+    }
+    catch (err) {
+        status = 401;
+        response = {
+            success: false,
+            status: 401,
+            // TODO: Remove this error output later for security
+            error: err, 
+        };
+    }
+    res.status(status).send(response);
+
+});
 
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
