@@ -70,7 +70,10 @@ app.post("/jwtauth", async (req: express.Request, res: express.Response) => {
         }
 
         status = 200;
-        response = genAccessToken(apiKey, apiSecret, userId);
+        let token = genAccessToken(apiKey, apiSecret, userId);
+        response = {
+            access_token: token
+        }
 
         
     }
