@@ -46,7 +46,7 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
 
 // temp endpoint to register a user with no captcha
 // MAKE SURE TO REMOVE ON PRODUCTION
-/*userRouter.post("/registernocaptcha", async function getUser(req: express.Request, res: express.Response) {
+userRouter.post("/registernocaptcha", async function getUser(req: express.Request, res: express.Response) {
 
     let response = await registerUser(req);
     let status = response.status;
@@ -54,10 +54,11 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
     // return response
     res.status(status).json(response);
 
-});*/
+});
 
 // registers a user to firebase given the basic information
 // TODO: if the req has streamer/poltician fields, do more data set up
+// TODO: add field santization before register
 // Make sure non-viewers have strict information requirements in order to register
 async function registerUser(req: express.Request) {
     // the firestore
@@ -108,12 +109,11 @@ async function registerUser(req: express.Request) {
             banned: false,
             tags: req.body.tags
         });
-
-        /*
+      
         function generateP() { 
             var pass = ''; 
             var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +  
-                    'abcdefghijklmnopqrstuvwxyz0123456789@#$'; 
+                    'abcdefghijklmnopqrstuvwxyz0123456789'; 
                 
             for (let i = 1; i <= 8; i++) { 
                 var char = Math.floor(Math.random() 
@@ -124,10 +124,9 @@ async function registerUser(req: express.Request) {
                 
             return pass;
         }
-        */
-
-        await db.collection("users").doc(userRecord.uid).set({
-            streamkey: "streamkey"
+        
+        await db.collection("users").doc(userRecord.uid).update({
+            streamkey: generateP(),
         });
     }
 
