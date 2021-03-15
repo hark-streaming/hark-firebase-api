@@ -6,6 +6,7 @@ import * as cors from 'cors';
 import * as usersApi from "./api/users";
 import * as channelApi from "./api/channel";
 import * as locationApi from "./api/location";
+import * as utilsApi from "./api/utils";
 
 //admin.initializeApp(functions.config().firebase);
 // reminder: https://stackoverflow.com/questions/57397608/the-default-firebase-app-does-not-exist-make-sure-you-call-initializeapp-befo
@@ -35,60 +36,63 @@ app.use("/channel", channelApi.channelRouter);
 // you get the gist
 app.use("/location", locationApi.locationRouter);
 
+// route utility functions
+app.use("/utils", utilsApi.utilsRouter);
+
 // endpoint for jwt token auth for theta
-app.post("/jwtauth", async (req: express.Request, res: express.Response) => {
-    /* expected query in body
-    {
-        idToken: firebaseidtoken
-    }
-    */
+// app.post("/jwtauth", async (req: express.Request, res: express.Response) => {
+//     /* expected query in body
+//     {
+//         idToken: firebaseidtoken
+//     }
+//     */
 
-    let status = 0;
-    let response;
+//     let status = 0;
+//     let response;
 
-    // get the decoded id token from the firebase id token sent from frontend
-    try {
-        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+//     // get the decoded id token from the firebase id token sent from frontend
+//     try {
+//         const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
 
-        // taken from theta email
-        const jwt = require('jsonwebtoken');
-        const algorithm = { algorithm: "HS256" };
-        let apiKey = functions.config().theta.api_key;
-        let apiSecret = functions.config().theta.api_secret;
-        let userId = decodedToken.uid;
+//         // taken from theta email
+//         const jwt = require('jsonwebtoken');
+//         const algorithm = { algorithm: "HS256" };
+//         let apiKey = functions.config().theta.api_key;
+//         let apiSecret = functions.config().theta.api_secret;
+//         let userId = decodedToken.uid;
         
-        function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
-            let expiration = new Date().getTime() / 1000;
-            expiration += 120; // 2 minutes is what we use
-            let payload = {
-                api_key: apiKey,
-                user_id: userId,
-                iss: "auth0",
-                exp: expiration
-            };
-            return jwt.sign(payload, apiSecret, algorithm);
-        }
+//         function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
+//             let expiration = new Date().getTime() / 1000;
+//             expiration += 120; // 2 minutes is what we use
+//             let payload = {
+//                 api_key: apiKey,
+//                 user_id: userId,
+//                 iss: "auth0",
+//                 exp: expiration
+//             };
+//             return jwt.sign(payload, apiSecret, algorithm);
+//         }
 
-        status = 200;
-        let token = genAccessToken(apiKey, apiSecret, userId);
-        response = {
-            access_token: token
-        }
+//         status = 200;
+//         let token = genAccessToken(apiKey, apiSecret, userId);
+//         response = {
+//             access_token: token
+//         }
 
         
-    }
-    catch (err) {
-        status = 401;
-        response = {
-            success: false,
-            status: 401,
-            // TODO: Remove this error output later for security
-            error: err, 
-        };
-    }
-    res.status(status).send(response);
+//     }
+//     catch (err) {
+//         status = 401;
+//         response = {
+//             success: false,
+//             status: 401,
+//             // TODO: Remove this error output later for security
+//             error: err, 
+//         };
+//     }
+//     res.status(status).send(response);
 
-});
+// });
 
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
