@@ -81,6 +81,9 @@ async function registerUser(req: express.Request) {
         username: req.body.username,
         email: req.body.email,
         streamkey: "",
+        ein: req.body.ein,
+        name: req.body.name,
+        phone: req.body.phone
     });
 
     // if they are a streamer
@@ -89,20 +92,42 @@ async function registerUser(req: express.Request) {
     if (req.body.role == "streamer") {
         // temporarily doomtube data for testing purposes
         await db.collection("streams").doc(req.body.username).set({
-            title: "doorntube.com",
-            description: "https://realms.doom.tube\n\nwww.doom.tube // live.doom.tube // @RealDOOMTUBE // riot.doom.tube\ngab.com/realdoomtube\n\nPlaylists >>> https://www.doom.tube/resources.html\n\nETH/Chainlink - 0x885f03e7ba9529f589E8BEE501b4B62a15Cb4AFD\nBTC - 38XhfASAAXSzCqf4R7xLURhA5obWpCBg6A\nXRP - rEnCQo6Kxv8ETJTtyKHUWCYsFUQQfePN8q\n\n//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\nhttps://www.markdownguide.org/basic-syntax/\n\nhttps://robotstreamer.com/robot/3793\nhttps://dlive.tv/doomtube",
-            timestamp: "2021-02-27T04:05:56.779Z",
+            title: req.body.username,
+            description: "Default description!",
+            timestamp: Date.now(),
             poster: "https://cdn.bitwave.tv/static/img/Bitwave_Banner.jpg",
-            thumbnail: "https://cdn.stream.bitwave.tv/preview/doomtube.jpg",
+            thumbnail: "https://cdn.discordapp.com/attachments/814278920168931382/820548508192342056/hrk.png",
             live: true,
             nsfw: false,
             archive: false,
-            url: "https://cdn.stream.bitwave.tv/hls/doomtube/index.m3u8",
+            url: "http://13.59.151.129:8080/hls/" + req.body.username + ".m3u8",
             name: req.body.username,
             owner: userRecord.uid,
             avatar: "https://cdn.bitwave.tv/uploads/v2/avatar/c94aa96a-2b2b-4f33-a426-ad709f30c72f-128.png",
             to: "/channel/" + req.body.username,
-            banned: false
+            banned: false,
+            tags: req.body.tags
+        });
+
+        /*
+        function generateP() { 
+            var pass = ''; 
+            var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +  
+                    'abcdefghijklmnopqrstuvwxyz0123456789@#$'; 
+                
+            for (let i = 1; i <= 8; i++) { 
+                var char = Math.floor(Math.random() 
+                            * str.length + 1); 
+                    
+                pass += str.charAt(char) 
+            } 
+                
+            return pass;
+        }
+        */
+
+        await db.collection("users").doc(userRecord.uid).set({
+            streamkey: "streamkey"
         });
     }
 
