@@ -20,9 +20,10 @@ app.disable("x-powered-by");
 // options for cors
 // TODO: change origin permissions
 var corsOptions = {
+    //origin: "http://127.0.0.1:3001",
     origin: "*",
     optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-}
+}    
 
 // enable cors
 app.use(cors(corsOptions));
