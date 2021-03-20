@@ -21,6 +21,7 @@ app.disable("x-powered-by");
 // TODO: change origin permissions
 var corsOptions = {
     //origin: "http://127.0.0.1:3001",
+    //origin: ["http://demo.hark.tv", "http://127.0.0.1:3001/"],
     origin: "*",
     optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }    
@@ -40,61 +41,6 @@ app.use("/location", locationApi.locationRouter);
 // route utility functions
 app.use("/utils", utilsApi.utilsRouter);
 
-// endpoint for jwt token auth for theta
-// app.post("/jwtauth", async (req: express.Request, res: express.Response) => {
-//     /* expected query in body
-//     {
-//         idToken: firebaseidtoken
-//     }
-//     */
-
-//     let status = 0;
-//     let response;
-
-//     // get the decoded id token from the firebase id token sent from frontend
-//     try {
-//         const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-
-//         // taken from theta email
-//         const jwt = require('jsonwebtoken');
-//         const algorithm = { algorithm: "HS256" };
-//         let apiKey = functions.config().theta.api_key;
-//         let apiSecret = functions.config().theta.api_secret;
-//         let userId = decodedToken.uid;
-        
-//         function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
-//             let expiration = new Date().getTime() / 1000;
-//             expiration += 120; // 2 minutes is what we use
-//             let payload = {
-//                 api_key: apiKey,
-//                 user_id: userId,
-//                 iss: "auth0",
-//                 exp: expiration
-//             };
-//             return jwt.sign(payload, apiSecret, algorithm);
-//         }
-
-//         status = 200;
-//         let token = genAccessToken(apiKey, apiSecret, userId);
-//         response = {
-//             access_token: token
-//         }
-
-        
-//     }
-//     catch (err) {
-//         status = 401;
-//         response = {
-//             success: false,
-//             status: 401,
-//             // TODO: Remove this error output later for security
-//             error: err, 
-//         };
-//     }
-//     res.status(status).send(response);
-
-// });
-
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
 app.get("*", async (req: express.Request, res: express.Response) => {
@@ -103,6 +49,7 @@ app.get("*", async (req: express.Request, res: express.Response) => {
 
 exports.api = functions.https.onRequest(app);
 
+// to make tag data
 /*
 app.get("/dingle", async(req: express.Request, res: express.Response) => {
     const db = admin.firestore();
@@ -186,3 +133,5 @@ app.get("/dingle", async(req: express.Request, res: express.Response) => {
     res.status(200).send("ok");
 });
 */
+
+

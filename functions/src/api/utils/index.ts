@@ -8,7 +8,6 @@ import * as functions from "firebase-functions";
 export let utilsRouter = express.Router();
 
 // gets a list of live channels, capped at 16
-// probably move this into another folder/router so it doesnt interfere with the individual channel query
 utilsRouter.get("/live", async function getUser(req: express.Request, res: express.Response) {
 
     // function to get the live channels and return a response
