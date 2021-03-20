@@ -21,7 +21,7 @@ app.disable("x-powered-by");
 // TODO: change origin permissions
 var corsOptions = {
     //origin: "http://127.0.0.1:3001",
-    //origin: ["http://demo.hark.tv", "http://127.0.0.1:3001/"],
+    //origin: ["https://demo.hark.tv", "http://127.0.0.1:3000"],
     origin: "*",
     optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }    
