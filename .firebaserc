@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "hark-e2efe"
+    "default": "hark-e2efe",
+    "production": "hark-prod",
+    "development": "hark-e2efe"
   }
 }

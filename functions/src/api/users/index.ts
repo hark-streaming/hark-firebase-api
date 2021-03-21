@@ -46,15 +46,15 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
 
 // temp endpoint to register a user with no captcha
 // MAKE SURE TO REMOVE ON PRODUCTION
-userRouter.post("/registernocaptcha", async function getUser(req: express.Request, res: express.Response) {
+// userRouter.post("/registernocaptcha", async function getUser(req: express.Request, res: express.Response) {
 
-    let response = await registerUser(req);
-    let status = response.status;
+//     let response = await registerUser(req);
+//     let status = response.status;
 
-    // return response
-    res.status(status).json(response);
+//     // return response
+//     res.status(status).json(response);
 
-});
+// });
 
 // registers a user to firebase given the basic information
 // TODO: if the req has streamer/poltician fields, do more data set up
