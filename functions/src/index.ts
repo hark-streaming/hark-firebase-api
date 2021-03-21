@@ -7,6 +7,7 @@ import * as usersApi from "./api/users";
 import * as channelApi from "./api/channel";
 import * as locationApi from "./api/location";
 import * as utilsApi from "./api/utils";
+import * as dcardsApi from "./api/dcards";
 
 //admin.initializeApp(functions.config().firebase);
 // reminder: https://stackoverflow.com/questions/57397608/the-default-firebase-app-does-not-exist-make-sure-you-call-initializeapp-befo
@@ -40,6 +41,9 @@ app.use("/location", locationApi.locationRouter);
 
 // route utility functions
 app.use("/utils", utilsApi.utilsRouter);
+
+// route dcards
+app.use("/dcards", dcardsApi.dcardsRouter);
 
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
