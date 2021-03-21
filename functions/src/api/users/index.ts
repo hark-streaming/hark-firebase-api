@@ -91,23 +91,28 @@ async function registerUser(req: express.Request) {
     // add an entry into the firestore with their data
     // create a stream doc in the firestore
     if (req.body.role == "streamer") {
-        // temporarily doomtube data for testing purposes
+
+        let tags: string[] = [];
+        req.body.tags.forEach((element: { name: string; }) => {
+            tags.push(element.name);
+        });
+
         await db.collection("streams").doc(req.body.username).set({
             title: req.body.username,
             description: "Default description!",
             timestamp: Date.now(),
-            poster: "https://cdn.bitwave.tv/static/img/Bitwave_Banner.jpg",
+            poster: "https://media.discordapp.net/attachments/814278920168931382/819072942507556914/hark-logo-high-res.png?width=1025&height=280",
             thumbnail: "https://cdn.discordapp.com/attachments/814278920168931382/820548508192342056/hrk.png",
-            live: true,
+            live: false,
             nsfw: false,
             archive: false,
             url: "http://13.59.151.129:8080/hls/" + req.body.username + ".m3u8",
             name: req.body.username,
             owner: userRecord.uid,
-            avatar: "https://cdn.bitwave.tv/uploads/v2/avatar/c94aa96a-2b2b-4f33-a426-ad709f30c72f-128.png",
+            avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
             to: "/channel/" + req.body.username,
             banned: false,
-            tags: req.body.tags
+            tags: tags
         });
       
         function generateP() { 
