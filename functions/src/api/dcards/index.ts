@@ -1,12 +1,13 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
+import { firestore } from "firebase-admin";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
 export let dcardsRouter = express.Router();
 
 // query a list of top 16 dcards
-dcardsRouter.get("/list", async (req: express.Request, res: express.Response) => {
+dcardsRouter.get("/get/list", async (req: express.Request, res: express.Response) => {
     // function to get the top cards and return a response
     // function is for reponse error handling
     async function getTopCards() {
@@ -50,6 +51,42 @@ dcardsRouter.get("/list", async (req: express.Request, res: express.Response) =>
 
 });
 
+// query a specific user's card
+// (UNTESTED)
+dcardsRouter.get("/:uid", async (req: express.Request, res: express.Response) => {
+    const uid = req.params.uid;
+
+    // the firestore
+    const db = admin.firestore();
+
+    // The document associated with the streamer
+    const cardDoc = db.collection("dcards").doc(uid);
+
+    // takes in the card doc and returns response
+    async function getCardData(doc: firestore.DocumentReference) {
+        const cardDoc = await doc.get();
+
+        if (cardDoc.exists) {
+            return cardDoc.data();
+        }
+        else {
+            return { "success": false, "message": "Donation card not found" };
+        }
+
+    }
+
+    // get the stream data if it exists
+    let response = await getCardData(cardDoc);
+
+    // status code
+    let status = response?.success ? 200 : 404;
+
+    // send off the data
+    res.status(status).json(response);
+
+});
+
+
 // add a new dcard
 // need to provide it with an auth token, just like jwtauth
 dcardsRouter.post("/add", async (req: express.Request, res: express.Response) => {
@@ -91,7 +128,7 @@ dcardsRouter.post("/add", async (req: express.Request, res: express.Response) =>
         }
         status = 200;
     }
-    catch(err) {
+    catch (err) {
         response = {
             success: false,
             error: err,
