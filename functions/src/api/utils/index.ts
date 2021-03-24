@@ -73,6 +73,9 @@ utilsRouter.post("/jwtauth", async (req: express.Request, res: express.Response)
         const algorithm = { algorithm: "HS256" };
         let apiKey = functions.config().theta.api_key;
         let apiSecret = functions.config().theta.api_secret;
+        // i tried using their partner ids and whatnot but it also seems to not work
+        //let apiKey = functions.config().thetatest.vault_api_key
+        //let apiSecret = functions.config().thetatest.vault_api_secret;
         let userId = decodedToken.uid;
         
         function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
