@@ -112,7 +112,10 @@ async function registerUser(req: express.Request) {
             avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
             to: "/channel/" + req.body.username,
             banned: false,
-            tags: tags
+            tags: tags,
+            donateMsg: "",
+            donateOn: "",
+            donateUrl: "",
         });
       
         function generateP() { 
