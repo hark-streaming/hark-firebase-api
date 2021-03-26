@@ -1,5 +1,7 @@
 // Based from https://medium.com/@atbe/firebase-functions-true-routing-2cb17a5cd288
 import axios from "axios";
+//import * as thetajs from "@thetalabs/theta-js";
+const thetajs = require("@thetalabs/theta-js");
 import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
@@ -11,15 +13,15 @@ export let userRouter = express.Router();
 // (this method is basically just a test and can remove later) -kevin
 // Now that we have a router, we can define routes which this router
 // will handle. Please look into the Express documentation for more info.
-userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
-    // ...
+// userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
+//     // ...
 
-    // just like before
-    const uid = req.params.uid;
-    res.status(200).send(`You requested user with UID = ${uid}`);
+//     // just like before
+//     const uid = req.params.uid;
+//     res.status(200).send(`You requested user with UID = ${uid}`);
 
-    // ...
-});
+//     // ...
+// });
 
 // checks captcha, then registers user
 // their account type is based on the fields sent in the request
@@ -59,6 +61,7 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
 // registers a user to firebase given the basic information
 // TODO: if the req has streamer/poltician fields, do more data set up
 // TODO: add field santization before register
+// TODO: add error handling
 // Make sure non-viewers have strict information requirements in order to register
 async function registerUser(req: express.Request) {
     // the firestore
@@ -75,6 +78,10 @@ async function registerUser(req: express.Request) {
         disabled: false,
     });
 
+    // create theta wallets for the user
+    const p2pWallet = await generateP2PWallet(userRecord.uid);
+    const tokenWallet = await generateTokenWallet();
+
     // if they are a default user (viewer)
     // add an entry into the firestore with their data
     await db.collection("users").doc(userRecord.uid).set({
@@ -84,7 +91,17 @@ async function registerUser(req: express.Request) {
         streamkey: "",
         ein: req.body.ein,
         name: req.body.name,
-        phone: req.body.phone
+        phone: req.body.phone,
+        p2pWallet: p2pWallet,
+        tokenWallet: tokenWallet.address,
+    });
+
+    await db.collection("private").doc(userRecord.uid).set({
+        tokenWallet: {
+            privateKey: tokenWallet.privateKey,
+            mnemonic: tokenWallet._mnemonic().phrase, 
+            address: tokenWallet.address
+        }
     });
 
     // if they are a streamer
@@ -117,22 +134,22 @@ async function registerUser(req: express.Request) {
             donateOn: "",
             donateUrl: "",
         });
-      
-        function generateP() { 
-            var pass = ''; 
-            var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +  
-                    'abcdefghijklmnopqrstuvwxyz0123456789'; 
-                
-            for (let i = 1; i <= 8; i++) { 
-                var char = Math.floor(Math.random() 
-                            * str.length + 1); 
-                    
-                pass += str.charAt(char) 
-            } 
-                
+
+        function generateP() {
+            var pass = '';
+            var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+                'abcdefghijklmnopqrstuvwxyz0123456789';
+
+            for (let i = 1; i <= 8; i++) {
+                var char = Math.floor(Math.random()
+                    * str.length + 1);
+
+                pass += str.charAt(char)
+            }
+
             return pass;
         }
-        
+
         await db.collection("users").doc(userRecord.uid).update({
             streamkey: generateP(),
         });
@@ -162,8 +179,30 @@ async function verifyCaptcha(req: express.Request) {
     return hcaptchaRes;
 }
 
+// wallet from theta's partner service
+async function generateTokenWallet() {
+    const wallet = thetajs.Wallet.createRandom();
+
+    return wallet;
+}
+
+// wallet from theta's javascript sdk
+// used for governance token transactions
+async function generateP2PWallet(uid: String) {
+
+    // call theta's partner api to get a wallet
+    let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
+        headers: {
+            "x-api-key": functions.config().theta.xapikey
+        }
+    });
+    return req.data.body.address;
+}
+
 // (this method is basically just a test and can remove later) -kevin
 // Useful: Let's make sure we intercept un-matched routes and notify the client with a 404 status code
-userRouter.get("*", async (req: express.Request, res: express.Response) => {
-    res.status(404).send("This route does not exist.");
-});
+// userRouter.get("/test/test", async (req: express.Request, res: express.Response) => {
+//     let awallet = await generateTokenWallet();
+//     res.status(469).send(awallet._mnemonic().phrase);
+//     //res.status(404).send("This route does not exist.");
+// });
