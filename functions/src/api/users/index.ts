@@ -10,17 +10,10 @@ import * as functions from "firebase-functions";
 // api hub (the index.ts which will be sent to Firebase Functions).
 export let userRouter = express.Router();
 
-// (this method is basically just a test and can remove later) -kevin
-// Now that we have a router, we can define routes which this router
-// will handle. Please look into the Express documentation for more info.
+// gets all public facing information about a user
+// avatar, name, wallets,
 // userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
-//     // ...
-
-//     // just like before
-//     const uid = req.params.uid;
-//     res.status(200).send(`You requested user with UID = ${uid}`);
-
-//     // ...
+    
 // });
 
 // checks captcha, then registers user
@@ -133,6 +126,9 @@ async function registerUser(req: express.Request) {
             donateMsg: "",
             donateOn: "",
             donateUrl: "",
+            
+            p2pWallet: p2pWallet,
+            tokenWallet: tokenWallet.address,
         });
 
         function generateP() {
