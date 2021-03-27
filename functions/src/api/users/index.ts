@@ -126,9 +126,6 @@ async function registerUser(req: express.Request) {
             donateMsg: "",
             donateOn: "",
             donateUrl: "",
-            
-            p2pWallet: p2pWallet,
-            tokenWallet: tokenWallet.address,
         });
 
         function generateP() {

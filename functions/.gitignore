@@ -1,5 +1,6 @@
 # Compiled JavaScript files
 lib/**/*.js
+!lib/api/theta/thetajs.cjs.js
 lib/**/*.js.map
 
 # TypeScript v1 declaration files
