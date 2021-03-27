@@ -22,7 +22,9 @@ thetaRouter.get("/address/:uid", async function getUser(req: express.Request, re
                 return {
                     success: true,
                     status: 200,
-                    wallet: userData.wallet
+                    //wallet: userData.wallet
+                    p2pWallet: userData.p2pWallet,
+                    tokenWallet: userData.tokenWallet
                 }
             }
         }
@@ -41,20 +43,28 @@ thetaRouter.get("/address/:uid", async function getUser(req: express.Request, re
  * Donates a specified amount of tfuel to a user.
  * The receipient uid must be provided
  * Requires a firebase jwt token to verify id of the tfuel donor
+ * {
+ *   idToken: "firebase id token"
+ *   amount: "tfuel amount greater than 0.1"
+ * }
  */
 thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Request, res: express.Response) {
     const db = admin.firestore();
+
     async function donate() {
-
         try {
-            //UNCOMMENT THIS
-            //const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-            //const uid = decodedToken.uid;
+            const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+            const uid = decodedToken.uid;
 
-            const uid = req.params.receiveruid; //FOR TESTING ONLY
+            //const uid = req.params.receiveruid; //FOR TESTING ONLY
 
             // amount of tfuel to send
             const amount = req.body.amount;
+            if (amount < 0.1) return {
+                success: false,
+                status: 400,
+                message: "invalid tfuel amount",
+            }
 
             // create a wallet signer of the user
             const privateDoc = await db.collection("private").doc(uid).get();
@@ -71,13 +81,12 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
             const contractABI = require("./contract.json");
             const contract = new thetajs.Contract(contractAddress, contractABI, wallet);
 
-            // send tfuel to the contract
+            // create the data to send tfuel to the contract
             const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei
             const thetaWeiToSend = (new BigNumber(0));
             const tfuelWeiToSend = (new BigNumber(amount)).multipliedBy(ten18);
             const from = connectedWallet.address;
             const to = contractAddress;
-            //const to = "0x657C0acf8966E033f290cD710Ee03e163FCc8AFe";
             const txData = {
                 from: from,
                 outputs: [
@@ -89,11 +98,19 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
                 ]
             }
 
+            // send the tfuel off to the contract
             const transaction = new thetajs.transactions.SendTransaction(txData);
-            /*const result = */await connectedWallet.sendTransaction(transaction);
-            
+            await connectedWallet.sendTransaction(transaction);
+
             // then purchase tokens from the contract
             contract.purchaseTokens();
+
+            // return success
+            return {
+                success: true,
+                status: 200,
+                message: "donation success",
+            }
         }
         catch (err) {
             return {
@@ -102,14 +119,7 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
                 message: err,
             }
         }
-
-        return {
-            success: true,
-            status: 200,
-            message: "donation success",
-        }
     }
-
 
     let response = await donate();
     res.status(response.status).send(response);
