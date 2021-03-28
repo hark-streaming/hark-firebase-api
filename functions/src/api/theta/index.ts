@@ -79,31 +79,22 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
             // set up contract
             const contractAddress = "0x1f388c71f4b102ef4d1a794d70a93e08ac9daffa";
             const contractABI = require("./contract.json");
-            const contract = new thetajs.Contract(contractAddress, contractABI, wallet);
+            const contract = new thetajs.Contract(contractAddress, contractABI, connectedWallet);
+            console.log(contract);
 
+            // TODO: check gas price of transaction before doing it
+            // if they do not have enough tfuel for gas, we send some
+
+            
             // create the data to send tfuel to the contract
-            const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei
-            const thetaWeiToSend = (new BigNumber(0));
-            const tfuelWeiToSend = (new BigNumber(amount)).multipliedBy(ten18);
-            const from = connectedWallet.address;
-            const to = contractAddress;
-            const txData = {
-                from: from,
-                outputs: [
-                    {
-                        address: to,
-                        thetaWei: thetaWeiToSend,
-                        tfuelWei: tfuelWeiToSend,
-                    }
-                ]
-            }
-
-            // send the tfuel off to the contract
-            const transaction = new thetajs.transactions.SendTransaction(txData);
-            await connectedWallet.sendTransaction(transaction);
-
-            // then purchase tokens from the contract
-            contract.purchaseTokens();
+            const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+            const overrides = {
+                gasLimit: 100000, //override the default gasLimit
+                value: (new BigNumber(amount)).multipliedBy(ten18) // tfuelWei to send
+           };
+        
+           // then purchase tokens from the contract
+           contract.purchaseTokens(overrides);
 
             // return success
             return {
