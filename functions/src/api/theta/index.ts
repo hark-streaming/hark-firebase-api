@@ -15,27 +15,29 @@ thetaRouter.get("/address/:uid", async function getUser(req: express.Request, re
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
 
+
     let getAddressData = async () => {
         if (userDoc.exists) {
+
             const userData = userDoc.data();
-            if (userData != null && userData.wallet != null) {
-                const p2pWallet = userData.p2pWallet;
-                const tokenWallet = userData.tokenWallet;
-                
-                const p2pBalance = await getP2PWalletBalance(uid);
 
-                return {
-                    success: true,
-                    status: 200,
+            const p2pWallet = userData?.p2pWallet;
+            const tokenWallet = userData?.tokenWallet;
 
-                    p2pWallet: p2pWallet,
-                    p2pBalance: p2pBalance,
+            const p2pBalance = await getP2PWalletBalance(uid);
 
-                    tokenWallet: tokenWallet,
-                    // TODO: retrieve all of the custom TNT-20 tokens
-                    tokenBalance: "WIP",
-                }
+            return {
+                success: true,
+                status: 200,
+
+                p2pWallet: p2pWallet,
+                p2pBalance: p2pBalance,
+
+                tokenWallet: tokenWallet,
+                // TODO: retrieve all of the custom TNT-20 tokens
+                tokenBalance: "WIP",
             }
+
         }
 
         return {
@@ -106,16 +108,16 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
             // TODO: check gas price of transaction before doing it
             // if they do not have enough tfuel for gas, we send some
 
-            
+
             // create the data to send tfuel to the contract
             const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
             const overrides = {
                 gasLimit: 100000, //override the default gasLimit
                 value: (new BigNumber(amount)).multipliedBy(ten18) // tfuelWei to send
-           };
-        
-           // then purchase tokens from the contract
-           contract.purchaseTokens(overrides);
+            };
+
+            // then purchase tokens from the contract
+            contract.purchaseTokens(overrides);
 
             // return success
             return {
