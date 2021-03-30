@@ -77,6 +77,7 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
             const connectedWallet = wallet.connect(provider);
 
             // set up contract
+            // TODO: this should be the streamer's contract address, retrieved from db using their uid
             const contractAddress = "0x1f388c71f4b102ef4d1a794d70a93e08ac9daffa";
             const contractABI = require("./contract.json");
             const contract = new thetajs.Contract(contractAddress, contractABI, connectedWallet);
