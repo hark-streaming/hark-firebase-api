@@ -1,30 +1,39 @@
-//import axios from "axios";
+import axios from "axios";
 const thetajs = require("./thetajs.cjs.js");
 import * as express from "express";
 import * as admin from "firebase-admin";
 import { BigNumber } from "bignumber.js";
-//import * as functions from "firebase-functions";
+import * as functions from "firebase-functions";
 
 export let thetaRouter = express.Router();
 
 /**
- * Retrieves the wallet address of a user.
+ * Retrieves the wallet address and balances of a user.
  */
 thetaRouter.get("/address/:uid", async function getUser(req: express.Request, res: express.Response) {
     const db = admin.firestore();
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
 
-    let getAddressData = () => {
+    let getAddressData = async () => {
         if (userDoc.exists) {
             const userData = userDoc.data();
             if (userData != null && userData.wallet != null) {
+                const p2pWallet = userData.p2pWallet;
+                const tokenWallet = userData.tokenWallet;
+                
+                const p2pBalance = await getP2PWalletBalance(uid);
+
                 return {
                     success: true,
                     status: 200,
-                    //wallet: userData.wallet
-                    p2pWallet: userData.p2pWallet,
-                    tokenWallet: userData.tokenWallet
+
+                    p2pWallet: p2pWallet,
+                    p2pBalance: p2pBalance,
+
+                    tokenWallet: tokenWallet,
+                    // TODO: retrieve all of the custom TNT-20 tokens
+                    tokenBalance: "WIP",
                 }
             }
         }
@@ -35,7 +44,18 @@ thetaRouter.get("/address/:uid", async function getUser(req: express.Request, re
         };
     }
 
-    let response = getAddressData();
+    async function getP2PWalletBalance(uid: String) {
+
+        // call theta's partner api to get a wallet
+        let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
+            headers: {
+                "x-api-key": functions.config().theta.xapikey
+            }
+        });
+        return req.data.body.balance;
+    }
+
+    let response = await getAddressData();
     res.status(response.status).send(response);
 });
 
