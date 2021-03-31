@@ -10,7 +10,7 @@ export let thetaRouter = express.Router();
 /**
  * Retrieves the wallet address and balances of a user.
  */
-thetaRouter.get("/address/:uid", async function getUser(req: express.Request, res: express.Response) {
+thetaRouter.get("/address/:uid", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
@@ -70,7 +70,7 @@ thetaRouter.get("/address/:uid", async function getUser(req: express.Request, re
  *   amount: "tfuel amount greater than 0.1"
  * }
  */
-thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Request, res: express.Response) {
+thetaRouter.post("/donate/:receiveruid", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
 
     async function donate() {
@@ -101,7 +101,7 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
             // set up contract
             // TODO: this should be the streamer's contract address, retrieved from db using their uid
             const contractAddress = "0x1f388c71f4b102ef4d1a794d70a93e08ac9daffa";
-            const contractABI = require("./contract.json");
+            const contractABI = require("./contractOLD.json");
             const contract = new thetajs.Contract(contractAddress, contractABI, connectedWallet);
             console.log(contract);
 
@@ -118,6 +118,8 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
 
             // then purchase tokens from the contract
             contract.purchaseTokens(overrides);
+
+            // TODO: then write the amount of governance tokens gotten into the database if successful
 
             // return success
             return {
@@ -137,4 +139,131 @@ thetaRouter.post("/donate/:receiveruid", async function getUser(req: express.Req
 
     let response = await donate();
     res.status(response.status).send(response);
+});
+
+/**
+ * Deploys governance smart contracts (token contract and voting contract) for a streamer
+ * Requires an admin key to run, as well as the streamer's request to be in the database
+ * {
+ *   auth: "myharkadminkey"
+ * }
+ */
+thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, res: express.Response) {
+    const uid = req.params.streameruid;
+    const db = admin.firestore();
+    async function deployContracts() {
+        // check auth token here
+        if (req.body.auth != "myharkadminkey") {
+            return {
+                success: false,
+                status: 401,
+                message: "unauthorized",
+            };
+        }
+
+        // check that db for the streamer doesn't already have a contractAddress
+        let userDoc = await db.collection("users").doc(uid).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            if(userData?.contractAddress != null){
+                return {
+                    success: false,
+                    status: 400,
+                    message: "contract already exists",
+                };
+            }
+        }
+
+        try {
+            // create the streamer's wallet signer from private key
+            const privateDoc = await db.collection("private").doc(uid).get();
+            const privateData = await privateDoc.data();
+            const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
+
+            // connect wallet to provider
+            // CURRENTLY SCS
+            const chainId = thetajs.networks.ChainIds.Privatenet;
+            const provider = new thetajs.providers.HttpProvider(chainId);
+            const connectedWallet = wallet.connect(provider);
+
+            // create ContractFactory for governance token
+            const contractABI = require("./hark_governance_abi.json");
+            const contractBytecode = require("./hark_governance_bytecode.json");
+            const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
+
+            // Deploy contract for governance token
+            //const result = await contractToDeploy.simulateDeploy("testoe", "TEST");
+            const result = await contractToDeploy.deploy("testoe", "TEST");
+            //console.log("i am the result", result);
+            const address = result.contract_address;
+            //console.log("i am the address", address);
+
+            // write the contract address to streamer's userdoc
+            await db.collection("users").doc(uid).set({
+                contractAddress: address
+            }, { merge: true });
+
+            return {
+                success: "true",
+                status: 200,
+                contractAddress: ""
+            };
+        }
+
+        catch(err) {
+            return {
+                success: false,
+                status: 500,
+                message: "Something went wrong!",
+                error: err
+            };
+        }
+    }
+
+    let response = await deployContracts();
+    res.status(response.status).send(response);
+});
+
+/**
+ * Writes an entry into the database when a streamer requests to have a custom token
+ * Requires firebase auth token of streamer
+ * {
+ *   idToken: "firebase id token"
+ * }
+ */
+thetaRouter.put("/requesttoken", async function (req: express.Request, res: express.Response) {
+    const db = admin.firestore();
+
+    async function writeRequest() {
+        try {
+            // TODO: check for no auth token better than this funny try catch
+            const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+            const uid = decodedToken.uid;
+
+            // write their uid into the requests
+            await db.collection("requests").doc(uid).set({
+                message: "requested custom governance token"
+            });
+
+            // return success
+            return {
+                success: true,
+                status: 200,
+                message: "Token successfully requested",
+            }
+        }
+        catch (err) {
+            return {
+                success: false,
+                status: 500,
+                message: "Something went wrong!",
+            }
+        }
+
+    }
+
+
+    let response = await writeRequest();
+    res.status(response.status).send(response);
+
 });
