@@ -1,4 +1,4 @@
-//import axios from "axios";
+import axios from "axios";
 const thetajs = require("./thetajs.cjs.js");
 import * as express from "express";
 import * as admin from "firebase-admin";
@@ -58,6 +58,65 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
 
     let response = await getAddressData();
     res.status(response.status).send(response);
+});
+
+thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: express.Response) {
+    
+    const db = admin.firestore();
+    const uid = req.params.uid;
+    var balance = 0;
+
+    const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+
+    try {
+        // create the streamer's wallet signer from private key
+        const privateDoc = await db.collection("private").doc(uid).get();
+        const privateData = await privateDoc.data();
+        const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
+
+        // connect wallet to provider
+        // CURRENTLY SCS
+        const chainId = thetajs.networks.ChainIds.Privatenet;
+        const provider = new thetajs.providers.HttpProvider(chainId);
+        const connectedWallet = wallet.connect(provider);
+        const account = await provider.getAccount(connectedWallet.address);
+        balance = account.coins.tfuelwei;
+    } catch {
+        res.status(400).send({
+            success: false,
+            status: 400,
+            message: "Unverified TFuel wallet.",
+        });
+    }
+
+
+    if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
+        const previousReq = db.collection("cashout").doc(uid).get();
+        if((await previousReq).exists) {
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "Cashout request already fulfilled."
+            });
+        }
+
+        db.collection("cashout").doc(uid).set({
+            value: balance,
+            date: new Date()
+        });
+
+        res.status(200).send({
+            success: true,
+            status: 200,
+            message: "New cashout request made!"
+        });
+    } else {
+        res.status(400).send({
+            success: false,
+            status: 400,
+            message: "Not enough tfuel to request cash out.",
+        });
+    }
 });
 
 /**
@@ -164,7 +223,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
         let userDoc = await db.collection("users").doc(uid).get();
         if (userDoc.exists) {
             const userData = userDoc.data();
-            if(userData?.contractAddress != null){
+            if (userData?.contractAddress != null) {
                 return {
                     success: false,
                     status: 400,
@@ -209,7 +268,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             };
         }
 
-        catch(err) {
+        catch (err) {
             return {
                 success: false,
                 status: 500,
