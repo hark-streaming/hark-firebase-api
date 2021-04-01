@@ -1,8 +1,8 @@
 // Based from https://medium.com/@atbe/firebase-functions-true-routing-2cb17a5cd288
-import axios from "axios";
+//import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+//import * as functions from "firebase-functions";
 
 export let thetaRouter = express.Router();
 

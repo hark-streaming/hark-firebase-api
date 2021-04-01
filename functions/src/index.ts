@@ -2,6 +2,7 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import * as cors from 'cors';
+import axios from "axios";
 
 import * as usersApi from "./api/users";
 import * as channelApi from "./api/channel";
@@ -22,11 +23,11 @@ app.disable("x-powered-by");
 // options for cors
 // TODO: change origin permissions
 var corsOptions = {
-    //origin: "http://127.0.0.1:3001",
-    //origin: ["https://demo.hark.tv", "http://127.0.0.1:3000"],
-    origin: "*",
-    optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-}    
+  //origin: "http://127.0.0.1:3001",
+  //origin: ["https://demo.hark.tv", "http://127.0.0.1:3000"],
+  origin: "*",
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+}
 
 // enable cors
 app.use(cors(corsOptions));
@@ -49,10 +50,38 @@ app.use("/dcards", dcardsApi.dcardsRouter);
 // route theta funcs
 app.use("/theta", thetaApi.thetaRouter);
 
+app.post("/reports", async function getUser(req: express.Request, res: express.Response) {
+  // Verify captcha token with hcaptcha
+  const params = new URLSearchParams();
+  params.append('response', req.body.captcha);
+  params.append('secret', functions.config().hcaptcha_secret.key);
+  const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
+
+  let response;
+  let status;
+  const db = admin.firestore();
+  if (hcaptchaRes.data.success) {
+    await db.collection("reports").doc().set({
+      name: req.body.name,
+      email: req.body.email,
+      subject: req.body.subject,
+      report: req.body.report
+    });
+    response = { success: true };
+    status = 200;
+  }
+  else {
+    status = 500;
+    response = hcaptchaRes.data;
+  }
+
+  res.status(status).json(response);
+});
+
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
 app.get("*", async (req: express.Request, res: express.Response) => {
-    res.status(404).send("This route does not exist.");
+  res.status(404).send("This route does not exist.");
 });
 
 exports.api = functions.https.onRequest(app);
@@ -129,7 +158,7 @@ app.get("/dingle", async(req: express.Request, res: express.Response) => {
       { id: 0, slug: "candidates", name: "Candidates" }
     ];
 
-    jsonFile.forEach( x => { 
+    jsonFile.forEach( x => {
       startingId += 1;
       x.id = startingId;
     })
