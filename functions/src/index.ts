@@ -14,6 +14,7 @@ import * as thetaApi from "./api/theta";
 //admin.initializeApp(functions.config().firebase);
 // reminder: https://stackoverflow.com/questions/57397608/the-default-firebase-app-does-not-exist-make-sure-you-call-initializeapp-befo
 // also: https://stackoverflow.com/questions/58127896/error-could-not-load-the-default-credentials-firebase-function-to-firestore/58409339#58409339
+// MAKE SURE TO GET THIS CREDENTIAL FROM THE FIREBASE
 const serviceAccount = require("../hark-e2efe-firebase-adminsdk-vmx2u-c09484c0ad.json");
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
