@@ -1,5 +1,6 @@
 # Compiled JavaScript files
 lib/**/*.js
+!lib/api/theta/thetajs.cjs.js
 lib/**/*.js.map
 
 # TypeScript v1 declaration files
@@ -7,3 +8,6 @@ typings/
 
 # Node.js dependency directory
 node_modules/
+
+#private key
+hark-e2efe-firebase-adminsdk-vmx2u-c09484c0ad.json

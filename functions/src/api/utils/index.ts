@@ -1,3 +1,4 @@
+//import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
@@ -73,9 +74,6 @@ utilsRouter.post("/jwtauth", async (req: express.Request, res: express.Response)
         const algorithm = { algorithm: "HS256" };
         let apiKey = functions.config().theta.api_key;
         let apiSecret = functions.config().theta.api_secret;
-        // i tried using their partner ids and whatnot but it also seems to not work
-        //let apiKey = functions.config().thetatest.vault_api_key
-        //let apiSecret = functions.config().thetatest.vault_api_secret;
         let userId = decodedToken.uid;
         
         function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
@@ -92,10 +90,12 @@ utilsRouter.post("/jwtauth", async (req: express.Request, res: express.Response)
 
         status = 200;
         let token = genAccessToken(apiKey, apiSecret, userId);
+
         response = {
             access_token: token
         }
 
+        //let data = axios.get(`http://api-partner-testnet.thetatoken.org/user/${userId}/access_token`);
         
     }
     catch (err) {
