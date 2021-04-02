@@ -61,12 +61,26 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
 });
 
 thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: express.Response) {
-    
+
     const db = admin.firestore();
     const uid = req.params.uid;
     var balance = 0;
 
     const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+
+    // checks to ensure that the user cashing out is a streamer
+    try {
+        const userDoc = await db.collection("users").doc(uid).get();
+        const userData = await userDoc.data();
+        const streamKey = userData?.streamKey;
+        if (streamKey == null || streamKey == "") throw "Not a streamer!";
+    } catch {
+        res.status(400).send({
+            success: false,
+            status: 400,
+            message: "Not a streamer!"
+        });
+    }
 
     try {
         // create the streamer's wallet signer from private key
@@ -92,7 +106,7 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
 
     if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
         const previousReq = db.collection("cashout").doc(uid).get();
-        if((await previousReq).exists) {
+        if ((await previousReq).exists) {
             res.status(200).send({
                 success: true,
                 status: 200,
@@ -135,7 +149,7 @@ thetaRouter.post("/donate/:receiveruid", async function (req: express.Request, r
         try {
             const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
             const uid = decodedToken.uid;
-            
+
             //const uid = req.params.receiveruid; //FOR TESTING ONLY
 
             // amount of tfuel to send
@@ -253,7 +267,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             // create the streamer's wallet signer from private key
             const privateDoc = await db.collection("private").doc(uid).get();
             const privateData = await privateDoc.data();
-            const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);        
+            const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
 
             // connect wallet to provider
             // CURRENTLY SCS
@@ -273,22 +287,22 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             const userDoc = await db.collection("users").doc(uid).get();
             const userData = await userDoc.data();
             const username = userData?.username;
-            const tokenName = username.slice(0,4); // temporary we just grab first 4 letters
+            const tokenName = username.slice(0, 4); // temporary we just grab first 4 letters
 
             // Simulate a deploy to see how much tfuel we need and if it's all good
             const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName);
-            if(simulatedResult.vm_error == ''){
+            if (simulatedResult.vm_error == '') {
                 // check if we got enough tfuel in the wallet
                 const gasReq = simulatedResult.gas_used;
                 console.log(gasReq);
-                if(gasReq > balance) {
+                if (gasReq > balance) {
                     return {
                         success: false,
                         status: 500,
                         message: "not enough tfuel",
                     };
-                }           
-            } else {     
+                }
+            } else {
                 return {
                     success: false,
                     status: 500,
@@ -304,7 +318,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             await db.collection("users").doc(uid).set({
                 contractAddress: address
             }, { merge: true });
-            
+
 
             // Unwrite their db request for a token since we fulfilled it
             await db.collection("requests").doc(uid).delete();
