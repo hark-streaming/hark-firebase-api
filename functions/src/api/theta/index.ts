@@ -142,15 +142,20 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
  *   amount: "tfuel amount greater than 0.1"
  * }
  */
-thetaRouter.post("/donate/:receiveruid", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
 
     async function donate() {
         try {
             const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+            
+            // uid of the user that is donating
             const uid = decodedToken.uid;
 
-            //const uid = req.params.receiveruid; //FOR TESTING ONLY
+            // uid of the streamer receiving the donation
+            const streameruid = req.params.streameruid;
+
+            //const uid = req.params.streameruid; //FOR TESTING ONLY
 
             // amount of tfuel to send
             const amount = req.body.amount;
@@ -165,15 +170,16 @@ thetaRouter.post("/donate/:receiveruid", async function (req: express.Request, r
             const privateData = await privateDoc.data();
             const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
 
-            // connect scs provider to the wallet
+            // connect provider to the wallet
+            // CURRENTLY SCS
             const chainId = thetajs.networks.ChainIds.Privatenet;
             const provider = new thetajs.providers.HttpProvider(chainId);
             const connectedWallet = wallet.connect(provider);
 
-            // set up contract
-            const userDoc = await db.collection("users").doc(uid).get();
-            const userData = await userDoc.data();
-            const contractAddress = userData?.contractAddress;
+            // set up contract (contract is the streamer's)
+            const streamerDoc = await db.collection("users").doc(streameruid).get();
+            const streamerData = await streamerDoc.data();
+            const contractAddress = streamerData?.contractAddress;
             const contractABI = require("./hark_governance_abi.json");
             const contract = new thetajs.Contract(contractAddress, contractABI, connectedWallet);
 
@@ -188,18 +194,40 @@ thetaRouter.post("/donate/:receiveruid", async function (req: express.Request, r
             };
 
             // then purchase tokens from the contract
-            contract.purchaseTokens(overrides);
+            let res = await contract.purchaseTokens(overrides);
+            console.log(res);
 
-            // TODO: then write the amount of governance tokens gotten into the database if successful
+            // if we successful write down the awesome 
+            if (res.hash) {
+                // write down the blockchain transaction hash
+                await db.collection("transactions").doc(uid).set({
+                    [res.block.Timestamp]: {
+                        hash: res.hash,
+                        tfuelPaid: amount,
+                        tokensBought: amount * 100,
+                    }
+                }, { merge: true });
 
-            // TODO: ALSO write down the blockchain transaction hash
+                // get the name of the token
+                const tokenName = streamerData?.tokenName;
 
-            // return success
-            return {
-                success: true,
-                status: 200,
-                message: "donation success",
+                // then write the amount of governance tokens gotten into the database
+                await db.collection("tokens").doc(uid).set({
+                    [tokenName]: amount * 100
+                }, { merge: true });
+
+                // return success
+                return {
+                    success: true,
+                    status: 200,
+                    message: "donation success",
+                }
+
+            } else {
+                throw "transaction failed";
             }
+
+
         }
         catch (err) {
             return {
@@ -314,8 +342,9 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             const result = await contractToDeploy.deploy(username, tokenName);
             const address = result.contract_address;
 
-            // write the contract address to streamer's userdoc
+            // write the contract address to streamer's userdoc, as well as the token name
             await db.collection("users").doc(uid).set({
+                tokenName: tokenName,
                 contractAddress: address
             }, { merge: true });
 
