@@ -51,26 +51,33 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
         };
     }
 
-    async function getP2PWalletBalance(uid: String) {
-
-        // call theta's partner api to get a wallet
-        let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
-            headers: {
-                "x-api-key": functions.config().theta.xapikey
-            }
-        });
-        return req.data.body.balance;
-    }
+    
 
     let response = await getAddressData();
     res.status(response.status).send(response);
 });
 
+async function getP2PWalletBalance(uid: String) {
+
+    // call theta's partner api to get a wallet
+    let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
+        headers: {
+            "x-api-key": functions.config().theta.xapikey
+        }
+    });
+    return req.data.body.balance;
+}
+
+/**
+ * cashout
+ */
 thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: express.Response) {
+
+    // TODO: make this use an auth token
 
     const db = admin.firestore();
     const uid = req.params.uid;
-    var balance = 0;
+    //var balance = 0;
 
     const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
 
@@ -87,26 +94,8 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
         });
     }
 
-    try {
-        // create the streamer's wallet signer from private key
-        const privateDoc = await db.collection("private").doc(uid).get();
-        const privateData = await privateDoc.data();
-        const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
-
-        // connect wallet to provider
-        //const chainId = thetajs.networks.ChainIds.Privatenet;
-        const provider = new thetajs.providers.HttpProvider(chainId);
-        const connectedWallet = wallet.connect(provider);
-        const account = await provider.getAccount(connectedWallet.address);
-        balance = account.coins.tfuelwei;
-    } catch {
-        res.status(200).send({
-            success: false,
-            message: "Unverified TFuel wallet.",
-        });
-    }
-
-
+    const balance = await getP2PWalletBalance(uid);
+    
     if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
         const previousReq = db.collection("cashout").doc(uid).get();
         if ((await previousReq).exists) {
