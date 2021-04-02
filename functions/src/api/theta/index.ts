@@ -6,6 +6,12 @@ import { BigNumber } from "bignumber.js";
 import * as functions from "firebase-functions";
 export let thetaRouter = express.Router();
 
+// GLOBAL FOR SCS/TESTNET/MAINNET
+//const chainId = thetajs.networks.ChainIds.Privatenet;
+const chainId = thetajs.networks.ChainIds.Testnet;
+//const chainId = thetajs.networks.ChainIds.Mainnet;
+
+
 /**
  * Retrieves the wallet address and balances of a user.
  */
@@ -72,12 +78,11 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
     try {
         const userDoc = await db.collection("users").doc(uid).get();
         const userData = await userDoc.data();
-        const streamKey = userData?.streamKey;
-        if (streamKey == null || streamKey == "") throw "Not a streamer!";
+        const streamkey = userData?.streamkey;
+        if (streamkey == null || streamkey == "") throw "Not a streamer!";
     } catch {
-        res.status(400).send({
+        res.status(200).send({
             success: false,
-            status: 400,
             message: "Not a streamer!"
         });
     }
@@ -89,16 +94,14 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
         const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
 
         // connect wallet to provider
-        // CURRENTLY SCS
-        const chainId = thetajs.networks.ChainIds.Privatenet;
+        //const chainId = thetajs.networks.ChainIds.Privatenet;
         const provider = new thetajs.providers.HttpProvider(chainId);
         const connectedWallet = wallet.connect(provider);
         const account = await provider.getAccount(connectedWallet.address);
         balance = account.coins.tfuelwei;
     } catch {
-        res.status(400).send({
+        res.status(200).send({
             success: false,
-            status: 400,
             message: "Unverified TFuel wallet.",
         });
     }
@@ -109,7 +112,6 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
         if ((await previousReq).exists) {
             res.status(200).send({
                 success: true,
-                status: 200,
                 message: "Cashout request already fulfilled."
             });
         }
@@ -121,13 +123,11 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
 
         res.status(200).send({
             success: true,
-            status: 200,
             message: "New cashout request made!"
         });
     } else {
-        res.status(400).send({
+        res.status(200).send({
             success: false,
-            status: 400,
             message: "Not enough tfuel to request cash out.",
         });
     }
@@ -171,8 +171,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
 
             // connect provider to the wallet
-            // CURRENTLY SCS
-            const chainId = thetajs.networks.ChainIds.Privatenet;
+            //const chainId = thetajs.networks.ChainIds.Privatenet;
             const provider = new thetajs.providers.HttpProvider(chainId);
             const connectedWallet = wallet.connect(provider);
 
@@ -298,8 +297,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
 
             // connect wallet to provider
-            // CURRENTLY SCS
-            const chainId = thetajs.networks.ChainIds.Privatenet;
+            //const chainId = thetajs.networks.ChainIds.Privatenet;
             const provider = new thetajs.providers.HttpProvider(chainId);
             const connectedWallet = wallet.connect(provider);
             // the wallet must be verified in order for this to work (has to have had any tfuel transaction)
