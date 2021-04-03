@@ -209,7 +209,15 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
                 // then write the amount of governance tokens gotten into the database
                 await db.collection("tokens").doc(uid).set({
-                    [tokenName]: amount * 100
+                    [tokenName]: admin.firestore.FieldValue.increment(amount * 100)
+                }, { merge: true });
+
+                // then write the token count into the all section
+                // TODO: this is rate limited by firebase to be once per section, so may not be sustainable in future
+                await db.collection("tokens").doc("all").set({
+                    [tokenName]: {
+                        uid: admin.firestore.FieldValue.increment(amount * 100)
+                    }
                 }, { merge: true });
 
                 // return success
@@ -288,6 +296,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
         }
 
         try {
+            /* DONT USE THE STREAMER'S WALLET SINCE IT HAS NO TFUEL
             // create the streamer's wallet signer from private key
             const privateDoc = await db.collection("private").doc(uid).get();
             const privateData = await privateDoc.data();
@@ -300,20 +309,32 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             // the wallet must be verified in order for this to work (has to have had any tfuel transaction)
             const account = await provider.getAccount(connectedWallet.address);
             const balance = account.coins.tfuelwei;
+            */
 
+            // get the streamer's data
+            // Get the user's username so we can generate a token name
+            const userDoc = await db.collection("users").doc(uid).get();
+            const userData = await userDoc.data();
+            const username = userData?.username;
+            const tokenName = username.slice(0, 4); // just grab first 4 letters
+            // this address will be the owner of the contract
+            const streamerAddress = userData?.tokenWallet;
+
+            // create a signer using our deployer wallet that has tfuel
+            const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
+            const provider = new thetajs.providers.HttpProvider(chainId);
+            const connectedWallet = wallet.connect(provider);
+            const account = await provider.getAccount(connectedWallet.address);
+            const balance = account.coins.tfuelwei;
+            
             // create ContractFactory for governance token
             const contractABI = require("./hark_governance_abi.json");
             const contractBytecode = require("./hark_governance_bytecode.json");
             const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
 
-            // Get the user's username so we can generate a token name
-            const userDoc = await db.collection("users").doc(uid).get();
-            const userData = await userDoc.data();
-            const username = userData?.username;
-            const tokenName = username.slice(0, 4); // temporary we just grab first 4 letters
-
             // Simulate a deploy to see how much tfuel we need and if it's all good
-            const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName);
+            /*const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName);*/
+            const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName, streamerAddress);
             if (simulatedResult.vm_error == '') {
                 // check if we got enough tfuel in the wallet
                 const gasReq = simulatedResult.gas_used;
@@ -334,7 +355,8 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             }
 
             // Deploy contract for governance token since it passed simulation
-            const result = await contractToDeploy.deploy(username, tokenName);
+            /*const result = await contractToDeploy.deploy(username, tokenName);*/
+            const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
             const address = result.contract_address;
 
             // write the contract address to streamer's userdoc, as well as the token name
