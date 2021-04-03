@@ -51,7 +51,7 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
         };
     }
 
-    
+
 
     let response = await getAddressData();
     res.status(response.status).send(response);
@@ -69,15 +69,21 @@ async function getP2PWalletBalance(uid: String) {
 }
 
 /**
- * cashout
+ * Write a cahshout entry into the firestore if the user has enough tfuel
+ * Requires a firebase jwt token to verify id user requesting cashout
+ * {
+ *   idToken: "firebase id token"
+ * }
  */
-thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: express.Response) {
+thetaRouter.put("/cashout", async function (req: express.Request, res: express.Response) {
 
-    // TODO: make this use an auth token
+    // use an auth token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+
+    // uid of the user that is donating
+    const uid = decodedToken.uid;
 
     const db = admin.firestore();
-    const uid = req.params.uid;
-    //var balance = 0;
 
     const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
 
@@ -95,7 +101,7 @@ thetaRouter.post("/cashout/:uid", async function (req: express.Request, res: exp
     }
 
     const balance = await getP2PWalletBalance(uid);
-    
+
     if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
         const previousReq = db.collection("cashout").doc(uid).get();
         if ((await previousReq).exists) {
@@ -137,7 +143,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
     async function donate() {
         try {
             const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-            
+
             // uid of the user that is donating
             const uid = decodedToken.uid;
 
@@ -193,6 +199,8 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
                         hash: res.hash,
                         tfuelPaid: amount,
                         tokensBought: amount * 100,
+                        recipient: streameruid,
+                        sender: uid,
                     }
                 }, { merge: true });
 
