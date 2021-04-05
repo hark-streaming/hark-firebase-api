@@ -57,6 +57,9 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
     res.status(response.status).send(response);
 });
 
+/**
+ * Helper function to query theta for the balance of a p2p wallet
+ */
 async function getP2PWalletBalance(uid: String) {
 
     // call theta's partner api to get a wallet
@@ -247,7 +250,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 });
 
 /**
- * Deploys governance smart contracts (token contract and voting contract) for a streamer
+ * Deploys governance smart contract (token contract) for a streamer
  * Requires an admin key to run, as well as the streamer's request to be in the database
  * 
  * {
@@ -259,11 +262,11 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
  * or this one (has 1 tfuel on scs)
  * 0x97b6ca08269a53a53c46dbf90634464fb93e7f5de63451d8f4e57f0bd90dc0bc
  */
-thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/deploy-governance/:streameruid", async function (req: express.Request, res: express.Response) {
     const uid = req.params.streameruid;
     const db = admin.firestore();
     async function deployContracts() {
-        // check auth token here
+        // check admin auth token here
         if (req.body.auth != functions.config().hark_admin.key) {
             return {
                 success: false,
@@ -316,7 +319,7 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
             const userDoc = await db.collection("users").doc(uid).get();
             const userData = await userDoc.data();
             const username = userData?.username;
-            const tokenName = username.slice(0, 4); // just grab first 4 letters
+            const tokenName = username.slice(0, 4).toUpperCase(); // just grab first 4 letters
             // this address will be the owner of the contract
             const streamerAddress = userData?.tokenWallet;
 
@@ -391,13 +394,69 @@ thetaRouter.post("/deploy/:streameruid", async function (req: express.Request, r
 });
 
 /**
+ * Deploys election smart contract (polls contract) for a streamer
+ * Requires an admin key, a request for polls, and the governance contract 
+ * {
+ *   auth: "myharkadminkey"
+ * }
+ */
+ thetaRouter.post("/deploy-election/:streameruid", async function (req: express.Request, res: express.Response) {
+    res.status(200).send({
+        success: false,
+        message: "Election contract not deployed"
+    });
+});
+
+/**
+ * Writes an entry into the database when a streamer requests to have the polls feature
+ * Requires governance contract to have been already deployed
+ * Requires firebase auth token of streamer
+ * {
+ *   idToken: "firebase id token"
+ * }
+ */
+thetaRouter.post("/request-poll", async function (req: express.Request, res: express.Response) {
+    const db = admin.firestore();
+
+    // get the uid from the id token
+    let uid;
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        uid = decodedToken.uid;
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Invalid id token"
+        });
+    }
+
+    // check firebase for the governance contract address
+    try{
+
+    }
+    catch(err){
+
+    }
+    
+    // add the request into 
+
+
+    res.status(200).send({
+        success: false,
+        message: "Request failed"
+    });
+});
+
+/**
  * Writes an entry into the database when a streamer requests to have a custom token
  * Requires firebase auth token of streamer
  * {
  *   idToken: "firebase id token"
  * }
  */
-thetaRouter.put("/requesttoken", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/request-token", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
 
     async function writeRequest() {
