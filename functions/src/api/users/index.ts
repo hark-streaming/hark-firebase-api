@@ -13,12 +13,47 @@ export let userRouter = express.Router();
 // gets all public facing information about a user
 // avatar, name, wallets,
 // userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
-    
+
 // });
+
+/**
+ * Upgrade the provided uid of a normal user to a streamer, given the correct info
+ * {
+ *   captcha: the captcha token
+ *   ein: 12132
+ *   phone: 1231231
+ *   name: John Guy
+ *   tags: [{name: tag}, {name2: tag2}]
+ * }
+ */
+/* TODO: to be finished
+userRouter.post("/upgrade/:uid", async function (req: express.Request, res: express.Response) {
+    // Verify captcha token with hcaptcha
+    const hcaptchaRes = await verifyCaptcha(req);
+
+    // upgrade the user if captcha passes
+    let response;
+    let status;
+    if (hcaptchaRes.data.success) {
+        // update their user doc with new info
+
+        // then create a streamdoc
+        response = await registerStreamer(req);
+        status = response.status;
+    }
+    else {
+        status = 500;
+        response = hcaptchaRes.data;
+    }
+
+    // return response
+    res.status(status).json(response);
+
+});*/
 
 // checks captcha, then registers user
 // their account type is based on the fields sent in the request
-userRouter.post("/register", async function getUser(req: express.Request, res: express.Response) {
+userRouter.post("/register", async function (req: express.Request, res: express.Response) {
     // Verify captcha token with hcaptcha
     const hcaptchaRes = await verifyCaptcha(req);
 
@@ -38,6 +73,7 @@ userRouter.post("/register", async function getUser(req: express.Request, res: e
     res.status(status).json(response);
 
 });
+
 
 // temp endpoint to register a user with no captcha
 // MAKE SURE TO REMOVE ON PRODUCTION
@@ -92,7 +128,7 @@ async function registerUser(req: express.Request) {
     await db.collection("private").doc(userRecord.uid).set({
         tokenWallet: {
             privateKey: tokenWallet.privateKey,
-            mnemonic: tokenWallet._mnemonic().phrase, 
+            mnemonic: tokenWallet._mnemonic().phrase,
             address: tokenWallet.address
         }
     });
@@ -160,6 +196,64 @@ async function registerUser(req: express.Request) {
         message: "oh yeah user registered"
     };
 }
+
+/* TODO: to be finished
+async function createStreamer(uid: String, tag: String[],) {
+    // the firestore
+    const db = admin.firestore();
+
+    // add an entry into the firestore with their streamer data
+    let tags: string[] = [];
+    req.body.tags.forEach((element: { name: string; }) => {
+        tags.push(element.name);
+    });
+
+    await db.collection("streams").doc(req.body.username).set({
+        title: req.body.username,
+        description: "Default description!",
+        timestamp: Date.now(),
+        poster: "https://media.discordapp.net/attachments/814278920168931382/819072942507556914/hark-logo-high-res.png?width=1025&height=280",
+        thumbnail: "https://cdn.discordapp.com/attachments/814278920168931382/820548508192342056/hrk.png",
+        live: false,
+        nsfw: false,
+        archive: false,
+        url: "http://13.59.151.129:8080/hls/" + req.body.username + ".m3u8",
+        name: req.body.username,
+        owner: userRecord.uid,
+        avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
+        to: "/channel/" + req.body.username,
+        banned: false,
+        tags: tags,
+        donateMsg: "",
+        donateOn: "",
+        donateUrl: "",
+    });
+
+    function generateP() {
+        var pass = '';
+        var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+            'abcdefghijklmnopqrstuvwxyz0123456789';
+
+        for (let i = 1; i <= 8; i++) {
+            var char = Math.floor(Math.random()
+                * str.length + 1);
+
+            pass += str.charAt(char)
+        }
+
+        return pass;
+    }
+
+    await db.collection("users").doc(userRecord.uid).update({
+        streamkey: generateP(),
+    });
+
+    return {
+        success: true,
+        status: 200,
+        message: "oh yeah streamer registered"
+    };
+}*/
 
 // verifies the hcaptcha and returns the result
 async function verifyCaptcha(req: express.Request) {
