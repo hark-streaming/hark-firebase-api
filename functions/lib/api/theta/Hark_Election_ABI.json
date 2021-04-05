@@ -1,0 +1,240 @@
+[
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "getElectionCount",
+		"outputs": [
+			{
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "electionHasEnded",
+		"outputs": [
+			{
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [],
+		"name": "kill",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "getVotesToken",
+		"outputs": [
+			{
+				"name": "",
+				"type": "uint32[]"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "elections",
+		"outputs": [
+			{
+				"name": "options",
+				"type": "uint8"
+			},
+			{
+				"name": "deadline",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "getOptions",
+		"outputs": [
+			{
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "getElection",
+		"outputs": [
+			{
+				"name": "options",
+				"type": "uint8"
+			},
+			{
+				"name": "votes",
+				"type": "uint24[]"
+			},
+			{
+				"name": "votesToken",
+				"type": "uint32[]"
+			},
+			{
+				"name": "deadline",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"name": "_option",
+				"type": "uint8"
+			},
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "vote",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"name": "_optionCount",
+				"type": "uint8"
+			},
+			{
+				"name": "_deadline",
+				"type": "uint256"
+			}
+		],
+		"name": "createVote",
+		"outputs": [
+			{
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "token",
+		"outputs": [
+			{
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"name": "_electId",
+				"type": "uint256"
+			}
+		],
+		"name": "getVotes",
+		"outputs": [
+			{
+				"name": "",
+				"type": "uint24[]"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"name": "_token",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "fallback"
+	}
+]
