@@ -329,7 +329,7 @@ thetaRouter.post("/deploy-governance/:streameruid", async function (req: express
             const connectedWallet = wallet.connect(provider);
             const account = await provider.getAccount(connectedWallet.address);
             const balance = account.coins.tfuelwei;
-            
+
             // create ContractFactory for governance token
             const contractABI = require("./hark_governance_abi.json");
             const contractBytecode = require("./hark_governance_bytecode.json");
@@ -400,7 +400,7 @@ thetaRouter.post("/deploy-governance/:streameruid", async function (req: express
  *   auth: "myharkadminkey"
  * }
  */
- thetaRouter.post("/deploy-election/:streameruid", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/deploy-election/:streameruid", async function (req: express.Request, res: express.Response) {
     res.status(200).send({
         success: false,
         message: "Election contract not deployed"
@@ -416,36 +416,67 @@ thetaRouter.post("/deploy-governance/:streameruid", async function (req: express
  * }
  */
 thetaRouter.post("/request-poll", async function (req: express.Request, res: express.Response) {
-    const db = admin.firestore();
-
-    // get the uid from the id token
-    let uid;
+    // check id token
     try {
-        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-        uid = decodedToken.uid;
-    }
-    catch (err) {
+        await admin.auth().verifyIdToken(req.body.idToken);
+    } 
+    catch(err){
         res.status(200).send({
             success: false,
-            status: 400,
+            status: 401,
             message: "Invalid id token"
         });
     }
 
-    // check firebase for the governance contract address
-    try{
+    // get the firestore
+    const db = admin.firestore();
 
-    }
-    catch(err){
-
-    }
+    // get the uid from the id token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const uid = decodedToken.uid;
     
-    // add the request into 
+    //const uid = req.body.idToken; //FOR TESTING
 
+    // check firebase for the governance contract address
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const govContract = userData?.governanceContract;
+    if (govContract) {
+        // add the request into a firebase doc if gov contract exists
+        try {
+            await db.collection("requests").doc(uid).set({
+                election: "requested"
+            });
+
+            // Success!
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "Election contract requested!"
+            });
+        }
+        catch (err) {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Unable to write to database"
+            });
+        }
+
+    }
+    // no contract, get out
+    else {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Missing governance contract"
+        });
+    }
 
     res.status(200).send({
         success: false,
-        message: "Request failed"
+        status: 500,
+        message: "Something went wrong!"
     });
 });
 
@@ -456,7 +487,7 @@ thetaRouter.post("/request-poll", async function (req: express.Request, res: exp
  *   idToken: "firebase id token"
  * }
  */
-thetaRouter.post("/request-token", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/request-governance", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
 
     async function writeRequest() {
@@ -467,14 +498,14 @@ thetaRouter.post("/request-token", async function (req: express.Request, res: ex
 
             // write their uid into the requests
             await db.collection("requests").doc(uid).set({
-                message: "requested custom governance token"
+                governance: "requested"
             });
 
             // return success
             return {
                 success: true,
                 status: 200,
-                message: "Token successfully requested",
+                message: "Governance token successfully requested",
             }
         }
         catch (err) {
