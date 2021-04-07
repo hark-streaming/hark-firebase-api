@@ -7,8 +7,8 @@ import * as functions from "firebase-functions";
 export let thetaRouter = express.Router();
 
 // GLOBAL FOR SCS/TESTNET/MAINNET
-//const chainId = thetajs.networks.ChainIds.Privatenet;
-const chainId = thetajs.networks.ChainIds.Testnet;
+const chainId = thetajs.networks.ChainIds.Privatenet;
+//const chainId = thetajs.networks.ChainIds.Testnet;
 //const chainId = thetajs.networks.ChainIds.Mainnet;
 
 
@@ -267,150 +267,6 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
  * 0x97b6ca08269a53a53c46dbf90634464fb93e7f5de63451d8f4e57f0bd90dc0bc
  */
 thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req: express.Request, res: express.Response) {
-    const uid = req.params.streameruid;
-    const db = admin.firestore();
-    async function deployContracts() {
-        // check admin auth token here
-        if (req.body.auth != functions.config().hark_admin.key) {
-            return {
-                success: false,
-                status: 401,
-                message: "unauthorized",
-            };
-        }
-
-        // check the db that the streamer did indeed request a token
-        let requestDoc = await db.collection("requests").doc(uid).get();
-        if (!requestDoc.exists) {
-            return {
-                success: false,
-                status: 400,
-                message: "user did not request gov token",
-            };
-        }
-
-        // check that db for the streamer doesn't already have a contractAddress
-        let userDoc = await db.collection("users").doc(uid).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            if (userData?.contractAddress != null) {
-                return {
-                    success: false,
-                    status: 400,
-                    message: "contract already exists",
-                };
-            }
-        }
-
-        try {
-            /* DONT USE THE STREAMER'S WALLET SINCE IT HAS NO TFUEL
-            // create the streamer's wallet signer from private key
-            const privateDoc = await db.collection("private").doc(uid).get();
-            const privateData = await privateDoc.data();
-            const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
-
-            // connect wallet to provider
-            //const chainId = thetajs.networks.ChainIds.Privatenet;
-            const provider = new thetajs.providers.HttpProvider(chainId);
-            const connectedWallet = wallet.connect(provider);
-            // the wallet must be verified in order for this to work (has to have had any tfuel transaction)
-            const account = await provider.getAccount(connectedWallet.address);
-            const balance = account.coins.tfuelwei;
-            */
-
-            // get the streamer's data
-            // Get the user's username so we can generate a token name
-            const userDoc = await db.collection("users").doc(uid).get();
-            const userData = await userDoc.data();
-            const username = userData?.username;
-            const tokenName = username.slice(0, 4).toUpperCase(); // just grab first 4 letters
-            // this address will be the owner of the contract
-            const streamerAddress = userData?.tokenWallet;
-
-            // create a signer using our deployer wallet that has tfuel
-            const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
-            const provider = new thetajs.providers.HttpProvider(chainId);
-            const connectedWallet = wallet.connect(provider);
-            const account = await provider.getAccount(connectedWallet.address);
-            const balance = account.coins.tfuelwei;
-
-            // create ContractFactory for governance token
-            const contractABI = require("./hark_governance_abi.json");
-            const contractBytecode = require("./hark_governance_bytecode.json");
-            const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
-
-            // Simulate a deploy to see how much tfuel we need and if it's all good
-            /*const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName);*/
-            const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName, streamerAddress);
-            if (simulatedResult.vm_error == '') {
-                // check if we got enough tfuel in the wallet
-                const gasReq = simulatedResult.gas_used;
-                console.log(gasReq);
-                if (gasReq > balance) {
-                    return {
-                        success: false,
-                        status: 500,
-                        message: "not enough tfuel",
-                    };
-                }
-            } else {
-                return {
-                    success: false,
-                    status: 500,
-                    message: "deployment error",
-                };
-            }
-
-            // Deploy contract for governance token since it passed simulation
-            /*const result = await contractToDeploy.deploy(username, tokenName);*/
-            const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
-            const address = result.contract_address;
-
-            // write the contract address to streamer's userdoc, as well as the token name
-            await db.collection("users").doc(uid).set({
-                tokenName: tokenName,
-                contractAddress: address
-            }, { merge: true });
-
-
-            // Unwrite their db request for a token since we fulfilled it
-            await db.collection("requests").doc(uid).delete();
-
-            return {
-                success: "true",
-                status: 200,
-                contractAddress: ""
-            };
-        }
-
-        catch (err) {
-            return {
-                success: false,
-                status: 500,
-                message: "Something went wrong!",
-                error: err
-            };
-        }
-    }
-
-    let response = await deployContracts();
-    res.status(response.status).send(response);
-});
-
-/**
- * Deploys governance smart contract (token contract) for a streamer
- * Requires an admin key to run, as well as the streamer's request to be in the database
- * 
- * {
- *   auth: "myharkadminkey"
- * }
- * 
- * Use this wallet privatekey for testing (has some scs tfuel)
- * 0x9719843d2b68609c3a271d8bf7b3bf7ee360290205b160b75618cb066c89b165
- * or this one (has 1 tfuel on scs)
- * 0x97b6ca08269a53a53c46dbf90634464fb93e7f5de63451d8f4e57f0bd90dc0bc
- */
-thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req: express.Request, res: express.Response) {
     //#region old contract deploy
     /*const uid = req.params.streameruid;
     const db = admin.firestore();
@@ -589,8 +445,8 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         const username = userData?.username;
 
         // just grab first 4 letters to make the token name
-        const tokenName = username.slice(0, 4).toUpperCase(); 
-        
+        const tokenName = username.slice(0, 4).toUpperCase();
+
         // this address will be the owner of the contract
         const streamerAddress = userData?.tokenWallet;
 
@@ -603,7 +459,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 
         // deployer wallet information
         const account = await provider.getAccount(connectedWallet.address);
-        const balance = account.coins.tfuelwei;
+        const balance = parseInt(account.coins.tfuelwei);
 
         // create ContractFactory for governance smart contract
         const contractABI = require("./Hark_Governance_ABI.json");
@@ -615,8 +471,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         if (simulatedResult.vm_error == '') {
             // no deployment error
             // check if we got enough tfuel in the wallet
-            const gasReq = simulatedResult.gas_used;
-            console.log(gasReq);
+            const gasReq = parseInt(simulatedResult.gas_used);
             if (gasReq > balance) {
                 res.status(200).send({
                     success: false,
@@ -635,6 +490,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
             return;
         }
 
+        
         // Deploy election contract since it passed simulation and save address
         const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
         const address = result.contract_address;
@@ -646,7 +502,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 
         // Log the completion of the request with the current date
         await db.collection("requests").doc(uid).update({
-            governanceRequest: Date.now()
+            governance: Date.now()
         });
 
         // Send off our success
@@ -661,7 +517,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         res.status(200).send({
             success: false,
             status: 500,
-            message: "Something went wrong!"
+            message: "Something went wrong!",
         });
         return;
     }
