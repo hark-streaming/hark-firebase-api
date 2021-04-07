@@ -254,6 +254,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 });
 
 /**
+ * Tested working 4/7/2021 3:37 PM
  * Deploys governance smart contract (token contract) for a streamer
  * Requires an admin key to run, as well as the streamer's request to be in the database
  * 
@@ -524,6 +525,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 });
 
 /**
+ * Tested working 4/7/2021 3:44 PM
  * Deploys election smart contract (polls contract) for a streamer
  * Requires an admin key in the header
  * Requires an existing request for election contract, and an existing governance contract 
@@ -614,7 +616,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
 
         // deployer wallet information
         const account = await provider.getAccount(connectedWallet.address);
-        const balance = account.coins.tfuelwei;
+        const balance = parseInt(account.coins.tfuelwei);
 
         // create ContractFactory for election smart contract
         const contractABI = require("./Hark_Election_ABI.json");
@@ -626,7 +628,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
         if (simulatedResult.vm_error == '') {
             // no deployment error
             // check if we got enough tfuel in the wallet
-            const gasReq = simulatedResult.gas_used;
+            const gasReq = parseInt(simulatedResult.gas_used);
             console.log(gasReq);
             if (gasReq > balance) {
                 res.status(200).send({
@@ -657,7 +659,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
 
         // Log the completion of the request with the current date
         await db.collection("requests").doc(uid).update({
-            electionRequest: Date.now()
+            election: Date.now()
         });
 
         // Send off our success
