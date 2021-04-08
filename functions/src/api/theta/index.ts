@@ -7,8 +7,8 @@ import * as functions from "firebase-functions";
 export let thetaRouter = express.Router();
 
 // GLOBAL FOR SCS/TESTNET/MAINNET
-const chainId = thetajs.networks.ChainIds.Privatenet;
-//const chainId = thetajs.networks.ChainIds.Testnet;
+//const chainId = thetajs.networks.ChainIds.Privatenet;
+const chainId = thetajs.networks.ChainIds.Testnet;
 //const chainId = thetajs.networks.ChainIds.Mainnet;
 
 
@@ -145,112 +145,257 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  * }
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
-    const db = admin.firestore();
-
-    async function donate() {
-        try {
-            const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-
-            // uid of the user that is donating
-            const uid = decodedToken.uid;
-
-            // uid of the streamer receiving the donation
-            const streameruid = req.params.streameruid;
-
-            //const uid = req.params.streameruid; //FOR TESTING ONLY
-
-            // amount of tfuel to send
-            const amount = req.body.amount;
-            if (amount < 0.1) return {
-                success: false,
-                status: 400,
-                message: "invalid tfuel amount",
-            }
-
-            // create a wallet signer of the user
-            const privateDoc = await db.collection("private").doc(uid).get();
-            const privateData = await privateDoc.data();
-            const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
-
-            // connect provider to the wallet
-            //const chainId = thetajs.networks.ChainIds.Privatenet;
-            const provider = new thetajs.providers.HttpProvider(chainId);
-            const connectedWallet = wallet.connect(provider);
-
-            // set up contract (contract is the streamer's)
-            const streamerDoc = await db.collection("users").doc(streameruid).get();
-            const streamerData = await streamerDoc.data();
-            const contractAddress = streamerData?.contractAddress;
-            const contractABI = require("./hark_governance_abi.json");
-            const contract = new thetajs.Contract(contractAddress, contractABI, connectedWallet);
-
-            // TODO: check gas price of transaction before doing it
-            // if they do not have enough tfuel for gas, we send some
-
-            // create the data to send tfuel to the contract
-            const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
-            const overrides = {
-                gasLimit: 100000, //override the default gasLimit
-                value: (new BigNumber(amount)).multipliedBy(ten18) // tfuelWei to send
-            };
-
-            // then purchase tokens from the contract
-            let res = await contract.purchaseTokens(overrides);
-            console.log(res);
-
-            // if we successful write down the awesome 
-            if (res.hash) {
-                // write down the blockchain transaction hash
-                await db.collection("transactions").doc(uid).set({
-                    [res.block.Timestamp]: {
-                        hash: res.hash,
-                        tfuelPaid: amount,
-                        tokensBought: amount * 100,
-                        recipient: streameruid,
-                        sender: uid,
-                    }
-                }, { merge: true });
-
-                // get the name of the token
-                const tokenName = streamerData?.tokenName;
-
-                // then write the amount of governance tokens gotten into the database
-                await db.collection("tokens").doc(uid).set({
-                    [tokenName]: admin.firestore.FieldValue.increment(amount * 100)
-                }, { merge: true });
-
-                // then write the token count into the all section
-                // TODO: this is rate limited by firebase to be once per section, so may not be sustainable in future
-                await db.collection("tokens").doc("all").set({
-                    [tokenName]: {
-                        uid: admin.firestore.FieldValue.increment(amount * 100)
-                    }
-                }, { merge: true });
-
-                // return success
-                return {
-                    success: true,
-                    status: 200,
-                    message: "donation success",
-                }
-
-            } else {
-                throw "transaction failed";
-            }
-
-
-        }
-        catch (err) {
-            return {
-                success: false,
-                status: 500,
-                message: err,
-            }
-        }
+    // check id token
+    try {
+        await admin.auth().verifyIdToken(req.body.idToken);
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 401,
+            message: "Invalid id token"
+        });
+        return;
     }
 
-    let response = await donate();
-    res.status(response.status).send(response);
+    // firestore
+    const db = admin.firestore();
+
+    // firebase auth token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+
+    // uid of the user that is donating
+    const uid = decodedToken.uid;
+
+    //const uid = req.body.idToken; // FOR TESTING
+
+    // uid of the streamer receiving the donation
+    const streameruid = req.params.streameruid;
+
+    // amount of tfuel to send
+    const amount = req.body.amount;
+
+    // balance of the donor's wallet
+    const p2pBalance = getP2PWalletBalance(uid);
+
+    // streamer's governance contract address
+    const streamerDoc = await db.collection("users").doc(streameruid).get();
+    const streamerData = await streamerDoc.data();
+    const governanceAddress = streamerData?.governanceAddress;
+
+    // general validation
+    try {
+        // leave if tfuel donation is too small (minimum 1 tfuel)
+        if (amount < 1) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Tfuel amount must be greater than 1",
+            });
+            return;
+        }
+
+        // leave if user does not have enough tfuel
+        if (p2pBalance < amount) {
+            res.status(200).send({
+                success: false,
+                status: 403,
+                message: "invalid tfuel amount",
+            });
+            return;
+        }
+
+        // leave if no governance contract to donate to
+        if (!governanceAddress) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "missing governance contract",
+            });
+            return;
+        }
+
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Validation error"
+        });
+        return;
+    }
+
+    // execute the donation
+    try {
+        // create a wallet signer of the donor
+        const privateDoc = await db.collection("private").doc(uid).get();
+        const privateData = await privateDoc.data();
+        const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
+
+        // connect provider to the signer
+        const provider = new thetajs.providers.HttpProvider(chainId);
+        const connectedWallet = wallet.connect(provider);
+
+        // set up streamer's smart contract with the signer
+        const governanceABI = require("./Hark_Governance_ABI.json");
+        const contract = new thetajs.Contract(governanceAddress, governanceABI, connectedWallet);
+
+        // transfer the correct amount from the p2p wallet to the token wallet
+        // is this scuffed? maybe. but there is no other way.
+        try {
+            let transfer = await axios.post(`https://api-partner-testnet.thetatoken.org/xact/withdraw`, {
+                sender_id: uid,
+                recipient_address: wallet.address, // make sure this is infact the token address of the donor
+                external_type: "cash_out",
+                amount: amount,
+                metadata: {
+                    "note": "withdrawal for donation to streamer's smart contract"
+                }
+            },
+                {
+
+                    headers: {
+                        "x-api-key": functions.config().theta.xapikey
+                    }
+                }
+            );
+            if (!transfer.data.success) {
+                // the withdrawal fails for some reason
+                res.status(200).send({
+                    success: false,
+                    status: 500,
+                    message: "P2P wallet transfer failed"
+                });
+                return;
+            }
+        }
+        catch (err) {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Platform withdrawal to p2p wallet error",
+            });
+            return;
+        }
+
+        // execute the smart contract transaction using the donor's token wallet
+        // create the data to send tfuel to the contract
+        const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+        const overrides = {
+            gasLimit: 100000, //override the default gasLimit
+            value: (new BigNumber(amount)).multipliedBy(ten18) // tfuelWei to send
+        };
+
+        // estimate the gas cost (in thetawei)
+        const estimatedGasBigNumber = await contract.estimateGas.purchaseTokens(overrides);
+        const estimatedGas = estimatedGasBigNumber.toNumber();
+
+        console.log("est gas", estimatedGas);
+
+        // if user can't afford gas cost of transaction
+        if ((estimatedGas + amount) < amount) {
+            // spot the donor the gas fee
+            try {
+                let gasSpot = await axios.post(`https://api-partner-testnet.thetatoken.org/xact/withdraw`, {
+                    sender_id: "00000000000000000000000000000000", // this is the pool wallet
+                    recipient_address: wallet.address, // make sure this is infact the token address of the donor
+                    external_type: "cash_out",
+                    amount: amount,
+                    metadata: {
+                        "note": "gas coverage for donor"
+                    }
+                },
+                    {
+
+                        headers: {
+                            "x-api-key": functions.config().theta.xapikey
+                        }
+                    }
+                );
+                if (!gasSpot.data.success) {
+                    // the withdrawal fails for some reason
+                    res.status(200).send({
+                        success: false,
+                        status: 500,
+                        message: "Unable to spot donor gas cost"
+                    });
+                    return;
+                }
+            }
+            catch (err) {
+                res.status(200).send({
+                    success: false,
+                    status: 500,
+                    message: "Platform gas withdrawal error",
+                });
+                return;
+            }
+
+        }
+
+        // finally, purchase tokens from the contract
+        let transaction = await contract.purchaseTokens(overrides);
+
+        // log transaction
+        if (transaction.hash) {
+            // transaction success
+
+            // write down the blockchain transaction hash
+            await db.collection("transactions").doc(uid).set({
+                [streameruid]: {
+                    timestamp: transaction.block.Timestamp,
+                    hash: transaction.hash,
+                    tfuelPaid: amount,
+                    tokensBought: amount * 100,
+                    recipient: streameruid,
+                    sender: uid,
+                }
+            }, { merge: true });
+
+            // get the name of the token
+            const tokenName = streamerData?.tokenName;
+
+            // write the amount of governance tokens the donor recieved
+            await db.collection("tokens").doc(uid).set({
+                [tokenName]: admin.firestore.FieldValue.increment(amount * 100)
+            }, { merge: true });
+
+            // then write the token count into the all section
+            // TODO: this is rate limited by firebase to be once per second, so may not be sustainable in future
+            await db.collection("tokens").doc("all").set({
+                [tokenName]: {
+                    uid: admin.firestore.FieldValue.increment(amount * 100)
+                }
+            }, { merge: true });
+
+            // now we're down with the donation
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "Donation successful"
+            });
+            return;
+
+        }
+        else {
+            // transaction failed
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Smart contract transaction failed"
+            });
+            return;
+        }
+
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Something went wrong!"
+        });
+        return;
+    }
 });
 
 /**
@@ -268,120 +413,6 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
  * 0x97b6ca08269a53a53c46dbf90634464fb93e7f5de63451d8f4e57f0bd90dc0bc
  */
 thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req: express.Request, res: express.Response) {
-    //#region old contract deploy
-    /*const uid = req.params.streameruid;
-    const db = admin.firestore();
-    async function deployContracts() {
-        // check admin auth token here
-        if (req.body.auth != functions.config().hark_admin.key) {
-            return {
-                success: false,
-                status: 401,
-                message: "unauthorized",
-            };
-        }
-
-        // check the db that the streamer did indeed request a token
-        let requestDoc = await db.collection("requests").doc(uid).get();
-        if (!requestDoc.exists) {
-            return {
-                success: false,
-                status: 400,
-                message: "user did not request gov token",
-            };
-        }
-
-        // check that db for the streamer doesn't already have a contractAddress
-        let userDoc = await db.collection("users").doc(uid).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            if (userData?.contractAddress != null) {
-                return {
-                    success: false,
-                    status: 400,
-                    message: "contract already exists",
-                };
-            }
-        }
-
-        try {
-
-            // get the streamer's data
-            // Get the user's username so we can generate a token name
-            const userDoc = await db.collection("users").doc(uid).get();
-            const userData = await userDoc.data();
-            const username = userData?.username;
-            const tokenName = username.slice(0, 4).toUpperCase(); // just grab first 4 letters
-            // this address will be the owner of the contract
-            const streamerAddress = userData?.tokenWallet;
-
-            // create a signer using our deployer wallet that has tfuel
-            const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
-            const provider = new thetajs.providers.HttpProvider(chainId);
-            const connectedWallet = wallet.connect(provider);
-            const account = await provider.getAccount(connectedWallet.address);
-            const balance = account.coins.tfuelwei;
-
-            // create ContractFactory for governance token
-            const contractABI = require("./hark_governance_abi.json");
-            const contractBytecode = require("./hark_governance_bytecode.json");
-            const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
-
-            // Simulate a deploy to see how much tfuel we need and if it's all good
-            const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName, streamerAddress);
-            if (simulatedResult.vm_error == '') {
-                // check if we got enough tfuel in the wallet
-                const gasReq = simulatedResult.gas_used;
-                console.log(gasReq);
-                if (gasReq > balance) {
-                    return {
-                        success: false,
-                        status: 500,
-                        message: "not enough tfuel",
-                    };
-                }
-            } else {
-                return {
-                    success: false,
-                    status: 500,
-                    message: "deployment error",
-                };
-            }
-
-            // Deploy contract for governance token since it passed simulation
-            const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
-            const address = result.contract_address;
-
-            // write the contract address to streamer's userdoc, as well as the token name
-            await db.collection("users").doc(uid).set({
-                tokenName: tokenName,
-                contractAddress: address
-            }, { merge: true });
-
-
-            // Unwrite their db request for a token since we fulfilled it
-            await db.collection("requests").doc(uid).delete();
-
-            return {
-                success: "true",
-                status: 200,
-                contractAddress: ""
-            };
-        }
-
-        catch (err) {
-            return {
-                success: false,
-                status: 500,
-                message: "Something went wrong!",
-                error: err
-            };
-        }
-    }
-
-    let response = await deployContracts();
-    res.status(response.status).send(response);*/
-    //#endregion old contract deploy
 
     // streamer's uid
     const uid = req.params.streameruid;
@@ -491,13 +522,14 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
             return;
         }
 
-        
+
         // Deploy election contract since it passed simulation and save address
         const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
         const address = result.contract_address;
 
-        // write the contract address to streamer's userdoc
+        // write the contract address to streamer's userdoc + token name
         await db.collection("users").doc(uid).set({
+            tokenName: tokenName,
             governanceAddress: address
         }, { merge: true });
 
