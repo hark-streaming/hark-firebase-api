@@ -1167,11 +1167,13 @@ class HttpProvider extends BaseProvider{
 
 function transactionToParams(transaction, dryRun, isAsync) {
     if (transaction instanceof SmartContractTransaction) {
+        //console.log("---------VALUE------" , transaction._rawTx.value);
+        //console.log("transaction" , transaction);
         const params = {
             "to": transaction.toOutput.address || null,
             "amount":
                 {
-                    "tfuelwei": transaction.value || "0"
+                    "tfuelwei": transaction._rawTx.value || "0" // there seemed to have been a typo here. Use "transaction._rawTx.value" instead of "transaction.value"  -kevin
                 },
             "gas_price": transaction.gasPrice.toString(),
             "gas_limit": transaction.gasLimit,

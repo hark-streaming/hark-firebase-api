@@ -4,8 +4,9 @@ import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 
 // Imports for theta
-require("isomorphic-fetch");
-const thetajs = require("@thetalabs/theta-js");
+//require("isomorphic-fetch");
+//const thetajs = require("@thetalabs/theta-js");
+const thetajs = require("./thetajs.cjs.js");
 import { BigNumber } from "bignumber.js";
 
 export let thetaRouter = express.Router();
@@ -77,7 +78,7 @@ async function getVaultWallet(uid: string) {
 /**
  * Helper function to generate a vault access token
  */
-function generateAccessToken(uid: string){
+function generateAccessToken(uid: string) {
     // taken from theta email
     const jwt = require('jsonwebtoken');
     const algorithm = { algorithm: "HS256" };
@@ -271,16 +272,13 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         let accessToken = generateAccessToken(uid);
 
         let transaction = await donateToGovernance(governanceAddress, uid, accessToken, vaultWallet.body.address, amount);
-        
+
         // log transaction
         if (transaction.hash) {
-            
-            // transaction success
             // broadcast the transaction to the blockchain
-            //let accessToken2 = generateAccessToken(uid);
-            //let response = await broadcastRawTransaction(uid, accessToken2, transaction.tx_bytes);
-            //console.log(response);
-
+            //let broadcasted = await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+            //console.log(broadcasted);
+            
             /*
             // write down the blockchain transaction hash
             await db.collection("transactions").doc(uid).set({
@@ -349,8 +347,12 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         provider.setPartnerId(functions.config().theta.partner_id);
         provider.setUserId(donorUid);
         provider.setAccessToken(accessToken);
+
+        // We will broadcast the transaction afterwards
         //provider.setAsync(true);
         //provider.setDryrun(true);
+
+        // Wait for transaction to finish
         provider.setAsync(false);
         provider.setDryrun(false);
 
@@ -366,7 +368,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         const amountWei = (new BigNumber(amount)).multipliedBy(ten18);
         const overrides = {
             gasLimit: 100000, //override the default gasLimit
-            value: amountWei.toString(10) // tfuelWei to send
+            value: amountWei // tfuelWei to send
         };
 
         // execute the smart contract transaction using the donor's vault wallet
@@ -384,55 +386,37 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 /**
  * Helper function to broadcast a raw smart contract transaction
  */
-// async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
-//     let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
-//     let params = {
-//         "partner_id": functions.config().partner_id,
-//         "tx_bytes": txBytes
-//     };
-//     let headers = {
-//         "x-access-tokens": senderAccessToken
-//     };
-//     let body = {
-//         "jsonrpc": "2.0",
-//         "method": "theta.BroadcastRawTransactionAsync",
-//         "params": params,
-//         "id": senderUid // not sure what this does, but can be anything
-//     };
+/*
+async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
+    let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
+    let params = {
+        "partner_id": functions.config().theta.partner_id,
+        "tx_bytes": txBytes
+    };
+    let headers = {
+        "x-access-token": senderAccessToken
+    };
+    let body = {
+        "jsonrpc": "2.0",
+        "method": "theta.BroadcastRawTransactionAsync",
+        "params": params,
+        "id": senderUid // not sure what this does, but can be anything
+    };
 
-//     // try {
-//     //     await axios.post(uri, body, {
-//     //         params: params,
-//     //         headers: headers
-//     //     });
-//     // }
-//     // catch(err){
-//     //     console.log(err);
-//     // }
-    
-//     //console.log(response);
+    let rp = require("request-promise");
 
-//     //return response;
-//     let rp = require("request-promise");
-//     try {
-//         let response = await rp({
-//             method: 'POST',
-//             uri: uri,
-//             body: body,
-//             json: true,
-//             headers: headers,
-//             insecure: true,
-//             rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
-//         });
-//         console.log(response);
-//     }
-//     catch(err) {
-//         console.log(err);
-//     }
-    
+    let response = await rp({
+        method: 'POST',
+        uri: uri,
+        body: body,
+        json: true,
+        headers: headers,
+        insecure: true,
+        rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
+    });
+    return response;
 
-//     return;
-// }
+}*/
 
 /**
  * Tested working 4/7/2021 3:37 PM
