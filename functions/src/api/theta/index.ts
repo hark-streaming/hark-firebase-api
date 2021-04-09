@@ -1,9 +1,13 @@
 import axios from "axios";
-const thetajs = require("./thetajs.cjs.js");
 import * as express from "express";
 import * as admin from "firebase-admin";
-import { BigNumber } from "bignumber.js";
 import * as functions from "firebase-functions";
+
+// Imports for theta
+require("isomorphic-fetch");
+const thetajs = require("@thetalabs/theta-js");
+import { BigNumber } from "bignumber.js";
+
 export let thetaRouter = express.Router();
 
 // GLOBAL FOR SCS/TESTNET/MAINNET
@@ -29,14 +33,14 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
             const p2pWallet = userData?.p2pWallet;
             const tokenWallet = userData?.tokenWallet;
 
-            const p2pBalance = await getP2PWalletBalance(uid);
+            const p2pBalance = await getVaultWallet(uid);
 
             return {
                 success: true,
                 status: 200,
 
                 p2pWallet: p2pWallet,
-                p2pBalance: p2pBalance,
+                p2pBalance: p2pBalance.body.balance,
 
                 tokenWallet: tokenWallet,
                 // TODO: retrieve all of the custom TNT-20 tokens
@@ -58,9 +62,9 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
 });
 
 /**
- * Helper function to query theta for the balance of a p2p wallet
+ * Helper function to query theta for details of a p2p wallet
  */
-async function getP2PWalletBalance(uid: String) {
+async function getVaultWallet(uid: string) {
 
     // call theta's partner api to get a wallet
     let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
@@ -68,11 +72,37 @@ async function getP2PWalletBalance(uid: String) {
             "x-api-key": functions.config().theta.xapikey
         }
     });
-    return req.data.body.balance;
+    return req.data;
+}
+/**
+ * Helper function to generate a vault access token
+ */
+function generateAccessToken(uid: string){
+    // taken from theta email
+    const jwt = require('jsonwebtoken');
+    const algorithm = { algorithm: "HS256" };
+    let apiKey = functions.config().theta.api_key;
+    let apiSecret = functions.config().theta.api_secret;
+    let userId = uid;
+
+    function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
+        let expiration = new Date().getTime() / 1000;
+        expiration += 120; // 2 minutes is what we use
+        let payload = {
+            api_key: apiKey,
+            user_id: userId,
+            iss: "auth0",
+            exp: expiration
+        };
+        return jwt.sign(payload, apiSecret, algorithm);
+    }
+    let accessToken = genAccessToken(apiKey, apiSecret, userId);
+
+    return accessToken;
 }
 
 /**
- * Write a cahshout entry into the firestore if the user has enough tfuel
+ * Write a cashout entry into the firestore if the user has enough tfuel
  * Requires a firebase jwt token to verify id user requesting cashout
  * {
  *   idToken: "firebase id token"
@@ -104,7 +134,7 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
         return;
     }
 
-    const balance = await getP2PWalletBalance(uid);
+    const balance = await getVaultWallet(uid);
 
     if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
         const previousReq = db.collection("cashout").doc(uid).get();
@@ -117,7 +147,7 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
         }
 
         db.collection("cashout").doc(uid).set({
-            value: balance,
+            value: balance.body.balance,
             date: new Date()
         });
 
@@ -146,7 +176,7 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     // check id token
-    try {
+    /*try {
         await admin.auth().verifyIdToken(req.body.idToken);
     }
     catch (err) {
@@ -158,16 +188,18 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         return;
     }
 
-    // firestore
-    const db = admin.firestore();
+    
 
     // firebase auth token
     const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
 
     // uid of the user that is donating
-    const uid = decodedToken.uid;
+    const uid = decodedToken.uid;*/
 
-    //const uid = req.body.idToken; // FOR TESTING
+    // firestore
+    const db = admin.firestore();
+
+    const uid = req.body.idToken; // FOR TESTING
 
     // uid of the streamer receiving the donation
     const streameruid = req.params.streameruid;
@@ -175,8 +207,16 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
     // amount of tfuel to send
     const amount = req.body.amount;
 
-    // balance of the donor's wallet
-    const p2pBalance = getP2PWalletBalance(uid);
+    // the donor's wallet
+    const vaultWallet = await getVaultWallet(uid);
+    if (vaultWallet?.status != "success") {
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Error retrieving vault wallet"
+        });
+        return;
+    }
 
     // streamer's governance contract address
     const streamerDoc = await db.collection("users").doc(streameruid).get();
@@ -196,7 +236,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         }
 
         // leave if user does not have enough tfuel
-        if (p2pBalance < amount) {
+        if (vaultWallet.body.balance < amount) {
             res.status(200).send({
                 success: false,
                 status: 403,
@@ -227,119 +267,21 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
     // execute the donation
     try {
-        // create a wallet signer of the donor
-        const privateDoc = await db.collection("private").doc(uid).get();
-        const privateData = await privateDoc.data();
-        const wallet = new thetajs.Wallet(privateData?.tokenWallet.privateKey);
+        // generate a vault access token
+        let accessToken = generateAccessToken(uid);
 
-        // connect provider to the signer
-        const provider = new thetajs.providers.HttpProvider(chainId);
-        const connectedWallet = wallet.connect(provider);
-
-        // set up streamer's smart contract with the signer
-        const governanceABI = require("./Hark_Governance_ABI.json");
-        const contract = new thetajs.Contract(governanceAddress, governanceABI, connectedWallet);
-
-        // transfer the correct amount from the p2p wallet to the token wallet
-        // is this scuffed? maybe. but there is no other way.
-        try {
-            let transfer = await axios.post(`https://api-partner-testnet.thetatoken.org/xact/withdraw`, {
-                sender_id: uid,
-                recipient_address: wallet.address, // make sure this is infact the token address of the donor
-                external_type: "cash_out",
-                amount: amount,
-                metadata: {
-                    "note": "withdrawal for donation to streamer's smart contract"
-                }
-            },
-                {
-
-                    headers: {
-                        "x-api-key": functions.config().theta.xapikey
-                    }
-                }
-            );
-            if (!transfer.data.success) {
-                // the withdrawal fails for some reason
-                res.status(200).send({
-                    success: false,
-                    status: 500,
-                    message: "P2P wallet transfer failed"
-                });
-                return;
-            }
-        }
-        catch (err) {
-            res.status(200).send({
-                success: false,
-                status: 500,
-                message: "Platform withdrawal to p2p wallet error",
-            });
-            return;
-        }
-
-        // execute the smart contract transaction using the donor's token wallet
-        // create the data to send tfuel to the contract
-        const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
-        const overrides = {
-            gasLimit: 100000, //override the default gasLimit
-            value: (new BigNumber(amount)).multipliedBy(ten18) // tfuelWei to send
-        };
-
-        // estimate the gas cost (in thetawei)
-        const estimatedGasBigNumber = await contract.estimateGas.purchaseTokens(overrides);
-        const estimatedGas = estimatedGasBigNumber.toNumber();
-
-        console.log("est gas", estimatedGas);
-
-        // if user can't afford gas cost of transaction
-        if ((estimatedGas + amount) < amount) {
-            // spot the donor the gas fee
-            try {
-                let gasSpot = await axios.post(`https://api-partner-testnet.thetatoken.org/xact/withdraw`, {
-                    sender_id: "00000000000000000000000000000000", // this is the pool wallet
-                    recipient_address: wallet.address, // make sure this is infact the token address of the donor
-                    external_type: "cash_out",
-                    amount: amount,
-                    metadata: {
-                        "note": "gas coverage for donor"
-                    }
-                },
-                    {
-
-                        headers: {
-                            "x-api-key": functions.config().theta.xapikey
-                        }
-                    }
-                );
-                if (!gasSpot.data.success) {
-                    // the withdrawal fails for some reason
-                    res.status(200).send({
-                        success: false,
-                        status: 500,
-                        message: "Unable to spot donor gas cost"
-                    });
-                    return;
-                }
-            }
-            catch (err) {
-                res.status(200).send({
-                    success: false,
-                    status: 500,
-                    message: "Platform gas withdrawal error",
-                });
-                return;
-            }
-
-        }
-
-        // finally, purchase tokens from the contract
-        let transaction = await contract.purchaseTokens(overrides);
-
+        let transaction = await donateToGovernance(governanceAddress, uid, accessToken, vaultWallet.body.address, amount);
+        
         // log transaction
         if (transaction.hash) {
+            
             // transaction success
+            // broadcast the transaction to the blockchain
+            //let accessToken2 = generateAccessToken(uid);
+            //let response = await broadcastRawTransaction(uid, accessToken2, transaction.tx_bytes);
+            //console.log(response);
 
+            /*
             // write down the blockchain transaction hash
             await db.collection("transactions").doc(uid).set({
                 [streameruid]: {
@@ -367,6 +309,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
                     uid: admin.firestore.FieldValue.increment(amount * 100)
                 }
             }, { merge: true });
+            */
 
             // now we're down with the donation
             res.status(200).send({
@@ -396,7 +339,100 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         });
         return;
     }
+
+    /**
+     * Function for a vault wallet to donate to a smart contract and receive governance tokens
+     */
+    async function donateToGovernance(contractAddress: string, donorUid: string, accessToken: string, donorAddress: string, amount: number) {
+        // set up the provider
+        let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
+        provider.setPartnerId(functions.config().theta.partner_id);
+        provider.setUserId(donorUid);
+        provider.setAccessToken(accessToken);
+        //provider.setAsync(true);
+        //provider.setDryrun(true);
+        provider.setAsync(false);
+        provider.setDryrun(false);
+
+        //console.log(provider);
+
+        // set up the contract
+        const governanceABI = require("./Hark_Governance_ABI.json");
+        let wallet = new thetajs.signers.PartnerVaultSigner(provider, donorAddress);
+        let contract = new thetajs.Contract(contractAddress, governanceABI, wallet);
+
+        // create the data to send tfuel to the contract
+        const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+        const amountWei = (new BigNumber(amount)).multipliedBy(ten18);
+        const overrides = {
+            gasLimit: 100000, //override the default gasLimit
+            value: amountWei.toString(10) // tfuelWei to send
+        };
+
+        // execute the smart contract transaction using the donor's vault wallet
+        let transaction = await contract.purchaseTokens(overrides);
+
+        console.log(transaction);
+
+        // return the transaction data
+        return transaction.result;
+    };
 });
+
+
+
+/**
+ * Helper function to broadcast a raw smart contract transaction
+ */
+// async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
+//     let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
+//     let params = {
+//         "partner_id": functions.config().partner_id,
+//         "tx_bytes": txBytes
+//     };
+//     let headers = {
+//         "x-access-tokens": senderAccessToken
+//     };
+//     let body = {
+//         "jsonrpc": "2.0",
+//         "method": "theta.BroadcastRawTransactionAsync",
+//         "params": params,
+//         "id": senderUid // not sure what this does, but can be anything
+//     };
+
+//     // try {
+//     //     await axios.post(uri, body, {
+//     //         params: params,
+//     //         headers: headers
+//     //     });
+//     // }
+//     // catch(err){
+//     //     console.log(err);
+//     // }
+    
+//     //console.log(response);
+
+//     //return response;
+//     let rp = require("request-promise");
+//     try {
+//         let response = await rp({
+//             method: 'POST',
+//             uri: uri,
+//             body: body,
+//             json: true,
+//             headers: headers,
+//             insecure: true,
+//             rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
+//         });
+//         console.log(response);
+//     }
+//     catch(err) {
+//         console.log(err);
+//     }
+    
+
+//     return;
+// }
 
 /**
  * Tested working 4/7/2021 3:37 PM
@@ -480,7 +516,8 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         const tokenName = username.slice(0, 4).toUpperCase();
 
         // this address will be the owner of the contract
-        const streamerAddress = userData?.tokenWallet;
+        //const streamerAddress = userData?.tokenWallet;
+        const streamerAddress = userData?.vaultWallet;
 
         // create a signer using our deployer wallet that has tfuel
         const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
@@ -712,6 +749,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
     }
 
 });
+
 
 /**
  * Writes an entry into the database when a streamer requests to have the polls feature
