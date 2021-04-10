@@ -25,45 +25,39 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
 
+    if (userDoc.exists) {
+        const vaultWallet = await getVaultWallet(uid);
+        const vaultBalance = vaultWallet.body.balance;
 
-    let getAddressData = async () => {
-        if (userDoc.exists) {
-
-            const userData = userDoc.data();
-
-            const p2pWallet = userData?.p2pWallet;
-            const tokenWallet = userData?.tokenWallet;
-
-            const p2pBalance = await getVaultWallet(uid);
-
-            return {
-                success: true,
-                status: 200,
-
-                p2pWallet: p2pWallet,
-                p2pBalance: p2pBalance.body.balance,
-
-                tokenWallet: tokenWallet,
-                // TODO: retrieve all of the custom TNT-20 tokens
-                tokenBalance: "WIP",
-            }
-
+        if(!vaultWallet.success){
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Unable to retrieve vault wallet"
+            });
+            return;
         }
 
-        return {
-            success: false,
-            status: 500
-        };
+        res.status(200).send({
+            success: true,
+            status: 200,
+            vaultWallet: vaultWallet.body.address,
+            vaultBalance: vaultBalance,
+        });
+        return;
     }
-
-
-
-    let response = await getAddressData();
-    res.status(response.status).send(response);
+    else {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "User does not exist!"
+        });
+        return;
+    }
 });
 
 /**
- * Helper function to query theta for details of a p2p wallet
+ * Helper function to query theta for details of a vault wallet
  */
 async function getVaultWallet(uid: string) {
 
@@ -111,20 +105,33 @@ function generateAccessToken(uid: string) {
  */
 thetaRouter.put("/cashout", async function (req: express.Request, res: express.Response) {
 
-    // use an auth token
-    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    // check id token
+    try {
+        await admin.auth().verifyIdToken(req.body.idToken);
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 401,
+            message: "Invalid id token"
+        });
+        return;
+    }
 
-    // uid of the user that is donating
+    // uid of the streamer
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
     const uid = decodedToken.uid;
 
     const db = admin.firestore();
 
     const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
 
+    // streamer data
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userData = await userDoc.data();
+
     // checks to ensure that the user cashing out is a streamer
     try {
-        const userDoc = await db.collection("users").doc(uid).get();
-        const userData = await userDoc.data();
         const streamkey = userData?.streamkey;
         if (streamkey == null || streamkey == "") throw "Not a streamer!";
     } catch {
@@ -135,9 +142,20 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
         return;
     }
 
-    const balance = await getVaultWallet(uid);
+    //const balance = await getVaultWallet(uid);
+    const vaultWallet = await getVaultWallet(uid);
+    const vaultBalance = vaultWallet.body.balance;
 
-    if ((new BigNumber(balance)).multipliedBy(ten18) >= new BigNumber(100)) {
+    if(!vaultWallet.success){
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Unable to retrieve vault wallet"
+        });
+        return;
+    }
+
+    if ((new BigNumber(vaultBalance)).multipliedBy(ten18) >= new BigNumber(100)) {
         const previousReq = db.collection("cashout").doc(uid).get();
         if ((await previousReq).exists) {
             res.status(200).send({
@@ -148,8 +166,9 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
         }
 
         db.collection("cashout").doc(uid).set({
-            value: balance.body.balance,
-            date: new Date()
+            username: userData?.username,
+            value: vaultBalance,
+            timestamp: Date.now(),
         });
 
         res.status(200).send({
@@ -172,12 +191,12 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  * Requires a firebase jwt token to verify id of the tfuel donor
  * {
  *   idToken: "firebase id token"
- *   amount: "tfuel amount greater than 0.1"
+ *   amount: "tfuel amount greater than 1"
  * }
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     // check id token
-    /*try {
+    try {
         await admin.auth().verifyIdToken(req.body.idToken);
     }
     catch (err) {
@@ -189,18 +208,16 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         return;
     }
 
-    
-
     // firebase auth token
     const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
 
     // uid of the user that is donating
-    const uid = decodedToken.uid;*/
+    const uid = decodedToken.uid;
 
     // firestore
     const db = admin.firestore();
 
-    const uid = req.body.idToken; // FOR TESTING
+    //const uid = req.body.idToken; // FOR TESTING
 
     // uid of the streamer receiving the donation
     const streameruid = req.params.streameruid;
@@ -276,14 +293,16 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         // log transaction
         if (transaction.hash) {
             // broadcast the transaction to the blockchain
-            //let broadcasted = await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+            await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
             //console.log(broadcasted);
-            
-            /*
+
+            // lof our current time
+            let sentTimestamp = Date.now();
+
             // write down the blockchain transaction hash
             await db.collection("transactions").doc(uid).set({
-                [streameruid]: {
-                    timestamp: transaction.block.Timestamp,
+                [sentTimestamp]: {
+                    transactionSent: sentTimestamp,
                     hash: transaction.hash,
                     tfuelPaid: amount,
                     tokensBought: amount * 100,
@@ -304,10 +323,10 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             // TODO: this is rate limited by firebase to be once per second, so may not be sustainable in future
             await db.collection("tokens").doc("all").set({
                 [tokenName]: {
-                    uid: admin.firestore.FieldValue.increment(amount * 100)
+                    [uid]: admin.firestore.FieldValue.increment(amount * 100)
                 }
             }, { merge: true });
-            */
+
 
             // now we're down with the donation
             res.status(200).send({
@@ -349,12 +368,12 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         provider.setAccessToken(accessToken);
 
         // We will broadcast the transaction afterwards
-        //provider.setAsync(true);
-        //provider.setDryrun(true);
+        provider.setAsync(true);
+        provider.setDryrun(true);
 
         // Wait for transaction to finish
-        provider.setAsync(false);
-        provider.setDryrun(false);
+        //provider.setAsync(false);
+        //provider.setDryrun(false);
 
         //console.log(provider);
 
@@ -386,7 +405,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 /**
  * Helper function to broadcast a raw smart contract transaction
  */
-/*
+
 async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
     let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
     let params = {
@@ -415,11 +434,9 @@ async function broadcastRawTransaction(senderUid: String, senderAccessToken: Str
         rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
     });
     return response;
-
-}*/
+}
 
 /**
- * Tested working 4/7/2021 3:37 PM
  * Deploys governance smart contract (token contract) for a streamer
  * Requires an admin key to run, as well as the streamer's request to be in the database
  * 
@@ -578,7 +595,6 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 });
 
 /**
- * Tested working 4/7/2021 3:44 PM
  * Deploys election smart contract (polls contract) for a streamer
  * Requires an admin key in the header
  * Requires an existing request for election contract, and an existing governance contract 
