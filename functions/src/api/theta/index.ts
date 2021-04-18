@@ -12,9 +12,9 @@ import { BigNumber } from "bignumber.js";
 export let thetaRouter = express.Router();
 
 // GLOBAL FOR SCS/TESTNET/MAINNET
-//const chainId = thetajs.networks.ChainIds.Privatenet;
-const chainId = thetajs.networks.ChainIds.Testnet;
-//const chainId = thetajs.networks.ChainIds.Mainnet;
+//const chainId = thetajs.networks.ChainIds.Privatenet; // SCS
+const chainId = thetajs.networks.ChainIds.Testnet; // TESTNET
+//const chainId = thetajs.networks.ChainIds.Mainnet; //MAINNET
 
 
 /**
@@ -69,6 +69,7 @@ async function getVaultWallet(uid: string) {
     });
     return req.data;
 }
+
 /**
  * Helper function to generate a vault access token
  */
@@ -94,6 +95,26 @@ function generateAccessToken(uid: string) {
     let accessToken = genAccessToken(apiKey, apiSecret, userId);
 
     return accessToken;
+}
+
+/**
+ * Helper function to verify a firebase idtoken
+ */
+async function verifyIdToken(idToken: string){
+    try {
+        await admin.auth().verifyIdToken(idToken);
+        return {
+            success: true,
+            status: 200,
+        };
+    }
+    catch (err) {
+        return {
+            success: false,
+            status: 401,
+            message: "Invalid id token"
+        };
+    }
 }
 
 /**
@@ -403,9 +424,8 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
 
 /**
- * Helper function to broadcast a raw smart contract transaction
+ * Helper function to broadcast a raw smart contract transaction to the blockchain
  */
-
 async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
     let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
     let params = {
@@ -927,3 +947,88 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
 
 
 });
+
+/**
+ * Create a poll/election using the election contract
+ * Pulls from data that was in the firebase
+ * An election(poll) consists of:
+ * Name
+ * Id
+ * Requires firebase auth token of streamer
+ * {
+ *   idToken: "firebase id token"
+ * }
+ */
+thetaRouter.post("/deploy-election", async function (req: express.Request, res: express.Response) {
+    // check id token
+    const result = await verifyIdToken(req.body.idToken);
+    if(!result.success){
+        // send em back if verify token fails
+        res.status(200).send(result);
+    }
+
+    try {
+        // get the firestore
+        const db = admin.firestore();
+
+        // get the uid from the id token
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        const uid = decodedToken.uid;
+
+        //const uid = req.body.idToken; //FOR TESTING
+
+        // check firebase if request already exists
+        const reqDoc = await db.collection("requests").doc(uid).get();
+        const reqData = reqDoc.data();
+        if (!reqData?.governance) {
+            // add the request into a firebase doc if request isn't there
+            try {
+                await db.collection("requests").doc(uid).set({
+                    governance: "requested"
+                });
+
+                // Success!
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "Governance contract requested!"
+                });
+                return;
+            }
+            catch (err) {
+                res.status(200).send({
+                    success: false,
+                    status: 500,
+                    message: "Unable to write to database"
+                });
+                return;
+            }
+
+        }
+        // already requested
+        else {
+            res.status(200).send({
+                success: false,
+                status: 403,
+                message: "Governance contract already requested"
+            });
+            return;
+        }
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Something went wrong!"
+        });
+        return;
+
+    }
+
+
+    
+});
+
+/**
+ * 
+ */
