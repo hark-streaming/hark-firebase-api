@@ -108,8 +108,8 @@ async function registerUser(req: express.Request) {
     });
 
     // create theta wallets for the user
-    const p2pWallet = await generateP2PWallet(userRecord.uid);
-    const tokenWallet = await generateTokenWallet();
+    const vaultWallet = await generateVaultWallet(userRecord.uid);
+    //const tokenWallet = await generateTokenWallet();
 
     // if they are a default user (viewer)
     // add an entry into the firestore with their data
@@ -121,17 +121,17 @@ async function registerUser(req: express.Request) {
         ein: req.body.ein,
         name: req.body.name,
         phone: req.body.phone,
-        p2pWallet: p2pWallet,
-        tokenWallet: tokenWallet.address,
+        vaultWallet: vaultWallet,
+        //tokenWallet: tokenWallet.address,
     });
 
-    await db.collection("private").doc(userRecord.uid).set({
-        tokenWallet: {
-            privateKey: tokenWallet.privateKey,
-            mnemonic: tokenWallet._mnemonic().phrase,
-            address: tokenWallet.address
-        }
-    });
+    // await db.collection("private").doc(userRecord.uid).set({
+    //     tokenWallet: {
+    //         privateKey: tokenWallet.privateKey,
+    //         mnemonic: tokenWallet._mnemonic().phrase,
+    //         address: tokenWallet.address
+    //     }
+    // });
 
     // if they are a streamer
     // add an entry into the firestore with their data
@@ -267,15 +267,15 @@ async function verifyCaptcha(req: express.Request) {
 }
 
 // wallet from theta's partner service
-async function generateTokenWallet() {
-    const wallet = thetajs.Wallet.createRandom();
+// async function generateTokenWallet() {
+//     const wallet = thetajs.Wallet.createRandom();
 
-    return wallet;
-}
+//     return wallet;
+// }
 
 // wallet from theta's javascript sdk
 // used for governance token transactions
-async function generateP2PWallet(uid: String) {
+async function generateVaultWallet(uid: String) {
 
     // call theta's partner api to get a wallet
     let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
