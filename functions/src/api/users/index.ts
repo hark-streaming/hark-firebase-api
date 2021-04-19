@@ -5,16 +5,97 @@ import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import { user } from "firebase-functions/lib/providers/auth";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
 export let userRouter = express.Router();
 
-// gets all public facing information about a user
-// avatar, name, wallets,
-// userRouter.get("/:uid", async function getUser(req: express.Request, res: express.Response) {
+/**
+ * Check if a username is unique or not
+ */
+userRouter.get("/check-username/:username", async function (req: express.Request, res: express.Response) {
+    const exists = await checkUsernameExists(req.body.username);
+    if (exists) {
+        res.status(200).send({
+            success: false,
+            status: 200,
+            message: "Username already exists"
+        });
+        return;
+    }
+    else {
+        res.status(200).send({
+            success: true,
+            status: 200,
+            message: "Username ais valid"
+        });
+        return;
+    }
+});
 
-// });
+/**
+ * Registers a user to the firebase
+ * Requires a valid hcaptcha token
+ */
+userRouter.post("/register", async function (req: express.Request, res: express.Response) {
+    // Verify captcha token with hcaptcha
+    const hcaptchaSuccess = await verifyCaptcha(req.body.captcha);
+
+    // register the user if captcha passes
+    if (hcaptchaSuccess) {
+
+        // all the fields needed for a user
+        const username = req.body.username;
+        const email = req.body.email;
+        const password = req.body.password;
+        const role = req.body.role;
+        const ein = req.body.ein;
+        const name = req.body.name;
+        const phone = req.body.phone;
+        let tags: string[] = [];
+        req.body.tags.forEach((element: { name: string; }) => {
+            tags.push(element.name);
+        });
+
+        // check if username is unique
+        const exists = await checkUsernameExists(req.body.username);
+        if (exists) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Username already exists"
+            });
+            return;
+        }
+
+        // register the user
+        const result = await registerUser(username, email, password, role, ein, name, phone, tags);
+        if (result.success) {
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "User registered"
+            });
+        }
+
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Registration error"
+        });
+
+        return;
+    }
+    else {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Captcha verification failed"
+        });
+        return;
+    }
+});
 
 /**
  * Upgrade the provided uid of a normal user to a streamer, given the correct info
@@ -26,23 +107,52 @@ export let userRouter = express.Router();
  *   tags: [{name: tag}, {name2: tag2}]
  * }
  */
-/* TODO: to be finished */
 userRouter.post("/upgrade/:uid", async function (req: express.Request, res: express.Response) {
     // Verify captcha token with hcaptcha
-    const hcaptchaRes = await verifyCaptcha(req);
+    const hcaptchaRes = await verifyCaptcha(req.body.captcha);
 
     // upgrade the user if captcha passes
     if (hcaptchaRes.data.success) {
+        // the firestore
+        const db = admin.firestore();
+
+        // all the fields needed for a user
+        const uid = req.params.uid;
+        const ein = req.body.ein;
+        const name = req.body.name;
+        const phone = req.body.phone;
+        let tags: string[] = [];
+        req.body.tags.forEach((element: { name: string; }) => {
+            tags.push(element.name);
+        });
+
         // update their user doc with new info
+        const userRef = db.collection("users").doc(uid);
+        await userRef.update({
+            ein: ein,
+            name: name,
+            phone: phone,
+        });
+
+        // get their username
+        const userDoc = await userRef.get();
+        const userData = await userDoc.data();
+        const username = userData?.username;
 
         // then create a streamdoc
-        //response = await registerStreamer(req);
-        await createStreamDoc("test", "test", ["test"]);
+        const result = await createStreamDoc(username, uid, tags);
+        if (result.success) {
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "User upgraded to streamer"
+            });
+        }
 
         res.status(200).send({
             success: true,
             status: 200,
-            message: "User upgraded to streamer"
+            message: "Streamer upgrade failed"
         });
         return;
     }
@@ -57,137 +167,55 @@ userRouter.post("/upgrade/:uid", async function (req: express.Request, res: expr
 
 });
 
-// checks captcha, then registers user
-// their account type is based on the fields sent in the request
-userRouter.post("/register", async function (req: express.Request, res: express.Response) {
-    // Verify captcha token with hcaptcha
-    const hcaptchaRes = await verifyCaptcha(req);
-
-    // register the user if captcha passes
-    let response;
-    let status;
-    if (hcaptchaRes.data.success) {
-        response = await registerUser(req);
-        status = response.status;
-    }
-    else {
-        status = 500;
-        response = hcaptchaRes.data;
-    }
-
-    // return response
-    res.status(status).json(response);
-
-});
-
-
-// temp endpoint to register a user with no captcha
-// MAKE SURE TO REMOVE ON PRODUCTION
-// userRouter.post("/registernocaptcha", async function getUser(req: express.Request, res: express.Response) {
-
-//     let response = await registerUser(req);
-//     let status = response.status;
-
-//     // return response
-//     res.status(status).json(response);
-
-// });
-
-// registers a user to firebase given the basic information
+/**
+ *  Registers a user to firebase given the required information
+ */ 
 // TODO: if the req has streamer/poltician fields, do more data set up
 // TODO: add field santization before register
 // TODO: add error handling
 // Make sure non-viewers have strict information requirements in order to register
-async function registerUser(req: express.Request) {
+async function registerUser(username: string, email: string, password: string, role: string, ein: number, name: string, phone: number, tags: string[]) {
     // the firestore
     const db = admin.firestore();
 
     // register the user with email, password, username
-    // TODO: error handling (maybe add a middleware?)
+    // TODO: better error handling (maybe add a middleware?)
     let userRecord = await admin.auth().createUser({
-        email: req.body.email,
+        email: email,
         emailVerified: false,
-        password: req.body.password,
-        displayName: req.body.username,
+        password: password,
+        displayName: username,
         photoURL: 'http://www.example.com/12345678/photo.png',
         disabled: false,
     });
 
     // create theta wallets for the user
     const vaultWallet = await generateVaultWallet(userRecord.uid);
-    //const tokenWallet = await generateTokenWallet();
 
     // if they are a default user (viewer)
     // add an entry into the firestore with their data
     await db.collection("users").doc(userRecord.uid).set({
         uid: userRecord.uid,
-        username: req.body.username,
-        email: req.body.email,
+        username: username,
+        email: email,
         streamkey: "",
-        ein: req.body.ein,
-        name: req.body.name,
-        phone: req.body.phone,
+        ein: ein,
+        name: name,
+        phone: phone,
         vaultWallet: vaultWallet,
-        //tokenWallet: tokenWallet.address,
     });
 
-    // await db.collection("private").doc(userRecord.uid).set({
-    //     tokenWallet: {
-    //         privateKey: tokenWallet.privateKey,
-    //         mnemonic: tokenWallet._mnemonic().phrase,
-    //         address: tokenWallet.address
-    //     }
-    // });
+    // add their username into another doc to track it
+    const arrayUnion = admin.firestore.FieldValue.arrayUnion;
+    await db.collection("users").doc("info").set({
+        usernames: arrayUnion(username)
+    }, { merge: true });
 
     // if they are a streamer
     // add an entry into the firestore with their data
     // create a stream doc in the firestore
-    if (req.body.role == "streamer") {
-
-        let tags: string[] = [];
-        req.body.tags.forEach((element: { name: string; }) => {
-            tags.push(element.name);
-        });
-
-        await db.collection("streams").doc(req.body.username).set({
-            title: req.body.username,
-            description: "Default description!",
-            timestamp: Date.now(),
-            poster: "https://media.discordapp.net/attachments/814278920168931382/819072942507556914/hark-logo-high-res.png?width=1025&height=280",
-            thumbnail: "https://cdn.discordapp.com/attachments/814278920168931382/820548508192342056/hrk.png",
-            live: false,
-            nsfw: false,
-            archive: false,
-            url: "http://13.59.151.129:8080/hls/" + req.body.username + ".m3u8",
-            name: req.body.username,
-            owner: userRecord.uid,
-            avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
-            to: "/channel/" + req.body.username,
-            banned: false,
-            tags: tags,
-            donateMsg: "",
-            donateOn: "",
-            donateUrl: "",
-        });
-
-        function generateP() {
-            var pass = '';
-            var str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
-                'abcdefghijklmnopqrstuvwxyz0123456789';
-
-            for (let i = 1; i <= 8; i++) {
-                var char = Math.floor(Math.random()
-                    * str.length + 1);
-
-                pass += str.charAt(char)
-            }
-
-            return pass;
-        }
-
-        await db.collection("users").doc(userRecord.uid).update({
-            streamkey: generateP(),
-        });
+    if (role == "streamer") {
+        await createStreamDoc(username, userRecord.uid, tags);
     }
 
     // if they are a politician
@@ -203,17 +231,31 @@ async function registerUser(req: express.Request) {
     };
 }
 
-/* TODO: to be finished*/
+/**
+ * Helper function to query whether a username is unique or not
+ */
+async function checkUsernameExists(username: string) {
+    // the firestore
+    const db = admin.firestore();
+
+    // grab the doc that has all usernames
+    // inside info, there is an array called usernames that holds all usernames
+    const infoDoc = await db.collection("users").doc("info").get();
+    const infoData = infoDoc.data();
+    const usernames = infoData?.usernames;
+
+    // if username exists, return true
+    if (usernames.indexOf(username)) return true;
+
+    return false;
+}
+
+/**
+ * Creates a streamer doc in the firebase given proper data
+ */
 async function createStreamDoc(username: string, uid: string, tags: string[]) {
     // the firestore
     const db = admin.firestore();
-    
-
-    // add an entry into the firestore with their streamer data
-    // let tags: string[] = [];
-    // req.body.tags.forEach((element: { name: string; }) => {
-    //     tags.push(element.name);
-    // });
 
     await db.collection("streams").doc(username).set({
         title: username,
@@ -262,26 +304,23 @@ async function createStreamDoc(username: string, uid: string, tags: string[]) {
     };
 }
 
-// verifies the hcaptcha and returns the result
-async function verifyCaptcha(req: express.Request) {
+/**
+ * Verifies the hCaptcha with hCaptcha
+ * Returns true if successful
+ */
+async function verifyCaptcha(token: string) {
     // Verify captcha token with hcaptcha
     const params = new URLSearchParams();
-    params.append('response', req.body.captcha);
+    params.append('response', token);
     params.append('secret', functions.config().hcaptcha_secret.key);
     const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
 
-    return hcaptchaRes;
+    return hcaptchaRes.data.success;
 }
 
-// wallet from theta's partner service
-// async function generateTokenWallet() {
-//     const wallet = thetajs.Wallet.createRandom();
-
-//     return wallet;
-// }
-
-// wallet from theta's javascript sdk
-// used for governance token transactions
+/**
+ * Generate a vault wallet for a user using theta's services
+ */
 async function generateVaultWallet(uid: String) {
 
     // call theta's partner api to get a wallet
@@ -292,11 +331,3 @@ async function generateVaultWallet(uid: String) {
     });
     return req.data.body.address;
 }
-
-// (this method is basically just a test and can remove later) -kevin
-// Useful: Let's make sure we intercept un-matched routes and notify the client with a 404 status code
-// userRouter.get("/test/test", async (req: express.Request, res: express.Response) => {
-//     let awallet = await generateTokenWallet();
-//     res.status(469).send(awallet._mnemonic().phrase);
-//     //res.status(404).send("This route does not exist.");
-// });
