@@ -29,17 +29,28 @@ const PLATFORM_ADDRESS = "0xe69531fc1fd0f1e0197e88fa526d756ad2310f1c";
 
 /**
  * Retrieves the wallet address and balances of a user.
+ * Add ?force_update=true to force an update
  */
 thetaRouter.get("/address/:uid", async function (req: express.Request, res: express.Response) {
     const db = admin.firestore();
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
+    console.log(req.query);
 
     if (userDoc.exists) {
-        const vaultWallet = await getVaultWallet(uid);
-        const vaultBalance = vaultWallet.body.balance;
+        let vaultWallet;
+        let vaultBalance;
+        if(req.query.force_update){
+            vaultWallet = await forceUpdateGetVaultWallet(uid);
+            vaultBalance = vaultWallet.body.balance;
+        }   
+        else {
+            vaultWallet = await getVaultWallet(uid);
+            vaultBalance = vaultWallet.body.balance;
+        }
+        
 
-        if (!vaultWallet.success) {
+        if (!vaultWallet.status) {
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -73,6 +84,20 @@ async function getVaultWallet(uid: string) {
 
     // call theta's partner api to get a wallet
     let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
+        headers: {
+            "x-api-key": functions.config().theta.xapikey
+        }
+    });
+    return req.data;
+}
+
+/**
+ * Helper function to query theta and force refresh the wallet balance
+ * Use this after making a donation to reflect the changes
+ */
+async function forceUpdateGetVaultWallet(uid: string) {
+    // call theta's partner api to get a wallet
+    let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet?force_update=true`, {
         headers: {
             "x-api-key": functions.config().theta.xapikey
         }
