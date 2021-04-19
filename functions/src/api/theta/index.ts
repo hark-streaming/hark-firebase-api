@@ -29,7 +29,7 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
         const vaultWallet = await getVaultWallet(uid);
         const vaultBalance = vaultWallet.body.balance;
 
-        if(!vaultWallet.success){
+        if (!vaultWallet.success) {
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -100,7 +100,7 @@ function generateAccessToken(uid: string) {
 /**
  * Helper function to verify a firebase idtoken
  */
-async function verifyIdToken(idToken: string){
+async function verifyIdToken(idToken: string) {
     try {
         await admin.auth().verifyIdToken(idToken);
         return {
@@ -167,7 +167,7 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
     const vaultWallet = await getVaultWallet(uid);
     const vaultBalance = vaultWallet.body.balance;
 
-    if(!vaultWallet.success){
+    if (!vaultWallet.success) {
         res.status(200).send({
             success: false,
             status: 500,
@@ -317,7 +317,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
             //console.log(broadcasted);
 
-            // lof our current time
+            // save our current time, that is when transaction was sent
             let sentTimestamp = Date.now();
 
             // write down the blockchain transaction hash
@@ -954,16 +954,18 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
  * An election(poll) consists of:
  * Name
  * Id
+ * Number of choices
  * Requires firebase auth token of streamer
  * {
  *   idToken: "firebase id token"
+ *   pollId: id of the poll of the streamer (1,2,...)
  * }
  */
-thetaRouter.post("/deploy-election", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/deploy-election-poll", async function (req: express.Request, res: express.Response) {
     // check id token
     const result = await verifyIdToken(req.body.idToken);
-    if(!result.success){
-        // send em back if verify token fails
+    if (!result.success) {
+        // failed, send em back
         res.status(200).send(result);
     }
 
@@ -977,43 +979,39 @@ thetaRouter.post("/deploy-election", async function (req: express.Request, res: 
 
         //const uid = req.body.idToken; //FOR TESTING
 
-        // check firebase if request already exists
-        const reqDoc = await db.collection("requests").doc(uid).get();
-        const reqData = reqDoc.data();
-        if (!reqData?.governance) {
-            // add the request into a firebase doc if request isn't there
-            try {
-                await db.collection("requests").doc(uid).set({
-                    governance: "requested"
-                });
-
-                // Success!
-                res.status(200).send({
-                    success: true,
-                    status: 200,
-                    message: "Governance contract requested!"
-                });
-                return;
-            }
-            catch (err) {
-                res.status(200).send({
-                    success: false,
-                    status: 500,
-                    message: "Unable to write to database"
-                });
-                return;
-            }
-
-        }
-        // already requested
-        else {
+        // check if we have an election contract deployed
+        const userDoc = await db.collection("users").doc(uid).get();
+        const userData = userDoc.data();
+        if (!userData?.electionAddress) {
+            // no address, no election contract
             res.status(200).send({
                 success: false,
                 status: 403,
-                message: "Governance contract already requested"
+                message: "Missing election smart contract"
             });
             return;
         }
+
+
+        // check if we have poll data
+        const pollId = req.body.pollId;
+        const pollDoc = await db.collection("polls").doc(uid).get();
+        const pollData = pollDoc.data();
+        if (!pollData?.[pollId]) {
+            // poll with that id doesn't exist
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "That poll does not exist"
+            });
+            return;
+        }
+
+        // poll exists, get the number of choices
+        const pollNumChoices = pollData?.[pollId].answers.length;
+
+        // blockchain time
+
     }
     catch (err) {
         res.status(200).send({
@@ -1022,13 +1020,66 @@ thetaRouter.post("/deploy-election", async function (req: express.Request, res: 
             message: "Something went wrong!"
         });
         return;
-
     }
-
-
-    
 });
 
 /**
- * 
+ * Cast a vote to a specific streamer's poll
+ * {
+ *   idToken: firebase id token of the voter
+ * }
  */
+thetaRouter.post("/cast-vote/:streamerUid/:pollId", async function (req: express.Request, res: express.Response) {
+    // check id token
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
+
+    try {
+        // get the firestore
+        const db = admin.firestore();
+
+        // get the uid from the id token
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        const voterUid = decodedToken.uid;
+
+        //const uid = req.body.idToken; //FOR TESTING
+
+        // streamer data
+        const streamerUid = req.params.streamerUid;
+        const pollId = req.params.pollId
+
+        // check if streamer exists
+        const streamerDoc = await db.collection("users").doc(streamerUid).get();
+        if(streamerDoc.exists){
+            
+        }
+
+        // check if we have poll data
+        const pollDoc = await db.collection("polls").doc(streamerUid).get();
+        const pollData = pollDoc.data();
+        if (!pollData?.[pollId]) {
+            // poll with that id doesn't exist
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "That poll does not exist"
+            });
+            return;
+        }
+
+        // blockchain time
+
+    }
+    catch (err) {
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "Something went wrong!"
+        });
+        return;
+    }
+
+});
