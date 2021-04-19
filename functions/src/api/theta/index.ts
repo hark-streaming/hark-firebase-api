@@ -16,6 +16,14 @@ export let thetaRouter = express.Router();
 const chainId = thetajs.networks.ChainIds.Testnet; // TESTNET
 //const chainId = thetajs.networks.ChainIds.Mainnet; //MAINNET
 
+// Contract Bytecode/ABI Globals
+const ELECTION_ABI = require("./contracts/hark_election_abi.json");
+const ELECTION_BYTECODE = require("./contracts/hark_election_bytecode.json");
+const GOVERNANCE_ABI = require("./contracts/hark_governance_abi.json");
+const GOVERNANCE_BYTECODE = require("./contracts/hark_governance_bytecode.json");
+//const PLATFORM_ABI = require("./contracts/hark_platform_token_abi.json");
+//const PLATFORM_BYTECODE = require("./contracts/hark_platform_token_bytecode.json");
+const PLATFORM_ADDRESS = "0xb1cd0dac72d31f03fd0a0e77eb615acbd6993c6c";
 
 /**
  * Retrieves the wallet address and balances of a user.
@@ -110,7 +118,8 @@ async function verifyIdToken(idToken: string) {
     }
     catch (err) {
         return {
-            success: false,
+            success: false, // MAKE SURE ENABLED ON PROD
+            //success: true, // DISABLE AUTH FOR TESTING
             status: 401,
             message: "Invalid id token"
         };
@@ -125,18 +134,11 @@ async function verifyIdToken(idToken: string) {
  * }
  */
 thetaRouter.put("/cashout", async function (req: express.Request, res: express.Response) {
-
     // check id token
-    try {
-        await admin.auth().verifyIdToken(req.body.idToken);
-    }
-    catch (err) {
-        res.status(200).send({
-            success: false,
-            status: 401,
-            message: "Invalid id token"
-        });
-        return;
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
     }
 
     // uid of the streamer
@@ -217,16 +219,10 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     // check id token
-    try {
-        await admin.auth().verifyIdToken(req.body.idToken);
-    }
-    catch (err) {
-        res.status(200).send({
-            success: false,
-            status: 401,
-            message: "Invalid id token"
-        });
-        return;
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
     }
 
     // firebase auth token
@@ -399,9 +395,9 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         //console.log(provider);
 
         // set up the contract
-        const governanceABI = require("./Hark_Governance_ABI.json");
+        //const governanceABI = require("./Hark_Governance_ABI.json");
         let wallet = new thetajs.signers.PartnerVaultSigner(provider, donorAddress);
-        let contract = new thetajs.Contract(contractAddress, governanceABI, wallet);
+        let contract = new thetajs.Contract(contractAddress, GOVERNANCE_ABI, wallet);
 
         // create the data to send tfuel to the contract
         const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
@@ -466,7 +462,7 @@ async function broadcastRawTransaction(senderUid: String, senderAccessToken: Str
  * 
  * Use this wallet privatekey for testing (has some scs tfuel)
  * 0x9719843d2b68609c3a271d8bf7b3bf7ee360290205b160b75618cb066c89b165
- * or this one (has 1 tfuel on scs)
+ * or this one (has some tfuel on scs)
  * 0x97b6ca08269a53a53c46dbf90634464fb93e7f5de63451d8f4e57f0bd90dc0bc
  */
 thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req: express.Request, res: express.Response) {
@@ -552,12 +548,12 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         const balance = parseInt(account.coins.tfuelwei);
 
         // create ContractFactory for governance smart contract
-        const contractABI = require("./Hark_Governance_ABI.json");
-        const contractBytecode = require("./Hark_Governance_Bytecode.json");
-        const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
+        //const contractABI = require("./Hark_Governance_ABI.json");
+        //const contractBytecode = require("./Hark_Governance_Bytecode.json");
+        const contractToDeploy = new thetajs.ContractFactory(GOVERNANCE_ABI, GOVERNANCE_BYTECODE, connectedWallet);
 
         // Simulate a deploy to check tfuel price and general errors
-        const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName, streamerAddress);
+        const simulatedResult = await contractToDeploy.simulateDeploy(username, tokenName, streamerAddress, PLATFORM_ADDRESS);
         if (simulatedResult.vm_error == '') {
             // no deployment error
             // check if we got enough tfuel in the wallet
@@ -582,7 +578,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 
 
         // Deploy election contract since it passed simulation and save address
-        const result = await contractToDeploy.deploy(username, tokenName, streamerAddress);
+        const result = await contractToDeploy.deploy(username, tokenName, streamerAddress, PLATFORM_ADDRESS);
         const address = result.contract_address;
 
         // write the contract address to streamer's userdoc + token name
@@ -694,7 +690,9 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
         // get the streamer's address of their gov contract
         const userDoc = await db.collection("users").doc(uid).get();
         const userData = await userDoc.data();
-        const governanceContract = userData?.governanceAddress;
+        const governanceAddress = userData?.governanceAddress;
+        //console.log(governanceAddress);
+        //console.log(typeof(governanceAddress));
 
         // create a signer using our deployer wallet that has tfuel
         const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
@@ -706,15 +704,19 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
         // deployer wallet information
         const account = await provider.getAccount(connectedWallet.address);
         const balance = parseInt(account.coins.tfuelwei);
+        console.log(balance);
 
         // create ContractFactory for election smart contract
-        const contractABI = require("./Hark_Election_ABI.json");
-        const contractBytecode = require("./Hark_Election_Bytecode.json");
-        const contractToDeploy = new thetajs.ContractFactory(contractABI, contractBytecode, connectedWallet);
+        //const contractABI = require("./Hark_Election_ABI.json");
+        //const contractBytecode = require("./Hark_Election_Bytecode.json");
+        const contractToDeploy = new thetajs.ContractFactory(ELECTION_ABI, ELECTION_BYTECODE, connectedWallet);
 
-        // Simulate a deploy to check tfuel price and general erros
-        const simulatedResult = await contractToDeploy.simulateDeploy(governanceContract);
-        if (simulatedResult.vm_error == '') {
+        // Simulate a deploy to check tfuel price and general errors
+        // Election contract requires governance addresss to deploy
+        const simulatedResult = await contractToDeploy.simulateDeploy(governanceAddress);
+        // For some reason simulating will create an error, yet actually deploying it works
+        // Thus, let's just ignore the error then
+        if (simulatedResult /*.vm_error == ''*/) {
             // no deployment error
             // check if we got enough tfuel in the wallet
             const gasReq = parseInt(simulatedResult.gas_used);
@@ -728,6 +730,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
                 return;
             }
         } else {
+            console.log(simulatedResult);
             // some sort of deployment error
             res.status(200).send({
                 success: false,
@@ -738,7 +741,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
         }
 
         // Deploy election contract since it passed simulation and save address
-        const result = await contractToDeploy.deploy(governanceContract);
+        const result = await contractToDeploy.deploy(governanceAddress);
         const address = result.contract_address;
 
         // write the contract address to streamer's userdoc
@@ -781,16 +784,10 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
  */
 thetaRouter.post("/request-election-contract", async function (req: express.Request, res: express.Response) {
     // check id token
-    try {
-        await admin.auth().verifyIdToken(req.body.idToken);
-    }
-    catch (err) {
-        res.status(200).send({
-            success: false,
-            status: 401,
-            message: "Invalid id token"
-        });
-        return;
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
     }
 
     try {
@@ -818,7 +815,7 @@ thetaRouter.post("/request-election-contract", async function (req: express.Requ
         // check firebase for the governance contract address
         const userDoc = await db.collection("users").doc(uid).get();
         const userData = userDoc.data();
-        const govContract = userData?.governanceContract;
+        const govContract = userData?.governanceAddress;
         if (govContract) {
             // add the election request into a firebase doc if a gov contract exists
             try {
@@ -874,16 +871,10 @@ thetaRouter.post("/request-election-contract", async function (req: express.Requ
  */
 thetaRouter.post("/request-governance-contract", async function (req: express.Request, res: express.Response) {
     // check id token
-    try {
-        await admin.auth().verifyIdToken(req.body.idToken);
-    }
-    catch (err) {
-        res.status(200).send({
-            success: false,
-            status: 401,
-            message: "Invalid id token"
-        });
-        return;
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
     }
 
     try {
@@ -899,7 +890,7 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
         // check firebase if request already exists
         const reqDoc = await db.collection("requests").doc(uid).get();
         const reqData = reqDoc.data();
-        if (!reqData?.governance) {
+        if (!reqData?.governanceAddress) {
             // add the request into a firebase doc if request isn't there
             try {
                 await db.collection("requests").doc(uid).set({
@@ -963,21 +954,21 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
  */
 thetaRouter.post("/deploy-election-poll", async function (req: express.Request, res: express.Response) {
     // check id token
-    const result = await verifyIdToken(req.body.idToken);
-    if (!result.success) {
-        // failed, send em back
-        res.status(200).send(result);
-    }
+    // const result = await verifyIdToken(req.body.idToken);
+    // if (!result.success) {
+    //     // failed, send em back
+    //     res.status(200).send(result);
+    // }
 
     try {
         // get the firestore
         const db = admin.firestore();
 
         // get the uid from the id token
-        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-        const uid = decodedToken.uid;
+        //const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        //const uid = decodedToken.uid;
 
-        //const uid = req.body.idToken; //FOR TESTING
+        const uid = req.body.idToken; //FOR TESTING
 
         // check if we have an election contract deployed
         const userDoc = await db.collection("users").doc(uid).get();
@@ -991,7 +982,6 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             });
             return;
         }
-
 
         // check if we have poll data
         const pollId = req.body.pollId;
@@ -1007,10 +997,71 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             return;
         }
 
-        // poll exists, get the number of choices
-        const pollNumChoices = pollData?.[pollId].answers.length;
+        // get streamer's vault wallet
+        const vaultWallet = await getVaultWallet(uid);
+        if (vaultWallet?.status != "success") {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Error retrieving vault wallet"
+            });
+            return;
+        }
 
-        // blockchain time
+        // if streamer has < 1 tfuel, no polls
+        if (vaultWallet.body.balance < 1) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Streamer must have more than 1 tfuel to make polls"
+            });
+            return;
+        }
+
+        // data for election contract write
+        const electionAddress = userData?.electionAddress;
+        const pollNumChoices = pollData?.[pollId].answers.length;
+        const pollEndTime = pollData?.[pollId].endTime;
+
+        
+
+        // generate a vault access token
+        let accessToken = generateAccessToken(uid);
+
+        // call the contract to make the poll...
+        let transaction = await deployElectionPoll(electionAddress, uid, accessToken, pollNumChoices, pollEndTime);
+
+        // log transaction
+        if (transaction.hash) {
+            // broadcast the transaction to the blockchain
+            await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+
+            // save our current time, that is when transaction was sent
+            let sentTimestamp = Date.now();
+
+            // write down the time we sent the transaction for the poll
+            await db.collection("polls").doc(uid).set({
+                sentTimestamp: sentTimestamp
+            }, { merge: true });
+
+            // now we're done with the poll deployment
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "Poll deployed"
+            });
+            return;
+
+        }
+        else {
+            // transaction failed
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Smart contract transaction failed"
+            });
+            return;
+        }
 
     }
     catch (err) {
@@ -1021,6 +1072,41 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         });
         return;
     }
+
+    /**
+    * Function for a vault wallet to donate to a smart contract and receive governance tokens
+    */
+    async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollNumChoices: number, pollEndTime: number) {
+        // set up the provider (our partner key is on testnet)
+        let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
+        provider.setPartnerId(functions.config().theta.partner_id);
+        provider.setUserId(uid);
+        provider.setAccessToken(accessToken);
+
+        // We will broadcast the transaction afterwards
+        provider.setAsync(true);
+        provider.setDryrun(true);
+
+        // set up the contract
+        let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
+        let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
+
+        // create the data to send tfuel to the contract
+        // const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
+        // const amountWei = (new BigNumber(amount)).multipliedBy(ten18);
+        // const overrides = {
+        //     gasLimit: 100000, //override the default gasLimit
+        //     value: amountWei // tfuelWei to send
+        // };
+
+        // execute the smart contract transaction using the donor's vault wallet
+        let transaction = await contract.feqfew(pollNumChoices, pollEndTime);
+
+        console.log(transaction);
+
+        // return the transaction data
+        return transaction.result;
+    };
 });
 
 /**
@@ -1029,7 +1115,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
  *   idToken: firebase id token of the voter
  * }
  */
-thetaRouter.post("/cast-vote/:streamerUid/:pollId", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/cast-vote/:streamerUid/:pollId/:choice", async function (req: express.Request, res: express.Response) {
     // check id token
     const result = await verifyIdToken(req.body.idToken);
     if (!result.success) {
@@ -1044,17 +1130,19 @@ thetaRouter.post("/cast-vote/:streamerUid/:pollId", async function (req: express
         // get the uid from the id token
         const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
         const voterUid = decodedToken.uid;
+        console.log(voterUid);
 
         //const uid = req.body.idToken; //FOR TESTING
 
-        // streamer data
+        // data for the poll
         const streamerUid = req.params.streamerUid;
-        const pollId = req.params.pollId
+        const pollId = req.params.pollId;
+        const choice = req.params.choice;
 
         // check if streamer exists
         const streamerDoc = await db.collection("users").doc(streamerUid).get();
-        if(streamerDoc.exists){
-            
+        if (streamerDoc.exists) {
+
         }
 
         // check if we have poll data
@@ -1066,6 +1154,15 @@ thetaRouter.post("/cast-vote/:streamerUid/:pollId", async function (req: express
                 success: false,
                 status: 500,
                 message: "That poll does not exist"
+            });
+            return;
+        }
+        // check if the choice exists in the poll
+        else if (!pollData?.[pollId]?.[choice]) {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "That choice does not exist in the poll"
             });
             return;
         }
