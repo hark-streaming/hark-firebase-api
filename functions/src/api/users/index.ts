@@ -5,7 +5,6 @@ import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import { user } from "firebase-functions/lib/providers/auth";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
@@ -70,21 +69,32 @@ userRouter.post("/register", async function (req: express.Request, res: express.
         }
 
         // register the user
-        const result = await registerUser(username, email, password, role, ein, name, phone, tags);
-        if (result.success) {
-            res.status(200).send({
-                success: true,
-                status: 200,
-                message: "User registered"
-            });
+        try {
+            const result = await registerUser(username, email, password, role, ein, name, phone, tags);
+            if (result.success) {
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "User registered"
+                });
+                return;
+            }
         }
+        catch {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Registration error"
+            });
+            return;
+        }
+
 
         res.status(200).send({
             success: false,
             status: 500,
-            message: "Registration error"
+            message: "unknown registration error"
         });
-
         return;
     }
     else {
@@ -109,10 +119,10 @@ userRouter.post("/register", async function (req: express.Request, res: express.
  */
 userRouter.post("/upgrade/:uid", async function (req: express.Request, res: express.Response) {
     // Verify captcha token with hcaptcha
-    const hcaptchaRes = await verifyCaptcha(req.body.captcha);
+    const hcaptchaSuccess = await verifyCaptcha(req.body.captcha);
 
     // upgrade the user if captcha passes
-    if (hcaptchaRes.data.success) {
+    if (hcaptchaSuccess) {
         // the firestore
         const db = admin.firestore();
 
@@ -140,13 +150,24 @@ userRouter.post("/upgrade/:uid", async function (req: express.Request, res: expr
         const username = userData?.username;
 
         // then create a streamdoc
-        const result = await createStreamDoc(username, uid, tags);
-        if (result.success) {
+        try {
+            const result = await createStreamDoc(username, uid, tags);
+            if (result.success) {
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "User upgraded to streamer"
+                });
+                return;
+            }
+        }
+        catch {
             res.status(200).send({
                 success: true,
                 status: 200,
-                message: "User upgraded to streamer"
+                message: "Streamer upgrade error"
             });
+            return;
         }
 
         res.status(200).send({
@@ -169,7 +190,7 @@ userRouter.post("/upgrade/:uid", async function (req: express.Request, res: expr
 
 /**
  *  Registers a user to firebase given the required information
- */ 
+ */
 // TODO: if the req has streamer/poltician fields, do more data set up
 // TODO: add field santization before register
 // TODO: add error handling
@@ -207,9 +228,9 @@ async function registerUser(username: string, email: string, password: string, r
 
     // add their username into another doc to track it
     const arrayUnion = admin.firestore.FieldValue.arrayUnion;
-    await db.collection("users").doc("info").set({
+    await db.collection("users").doc("info").update({
         usernames: arrayUnion(username)
-    }, { merge: true });
+    });
 
     // if they are a streamer
     // add an entry into the firestore with their data
@@ -241,11 +262,16 @@ async function checkUsernameExists(username: string) {
     // grab the doc that has all usernames
     // inside info, there is an array called usernames that holds all usernames
     const infoDoc = await db.collection("users").doc("info").get();
+    if (!infoDoc.exists) {
+        await db.collection("users").doc("info").set({
+            usernames: []
+        });
+    }
     const infoData = infoDoc.data();
     const usernames = infoData?.usernames;
 
     // if username exists, return true
-    if (usernames.indexOf(username)) return true;
+    if (usernames && usernames.indexOf(username) > -1) return true;
 
     return false;
 }
