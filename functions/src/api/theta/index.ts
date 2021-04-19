@@ -28,6 +28,59 @@ const PLATFORM_ADDRESS = "0xe69531fc1fd0f1e0197e88fa526d756ad2310f1c";
 //elec address 0xae0425d214db38bc90a48abf40dcd48ff2bca3e9
 
 /**
+ * Retrieves the governance token balances of a user
+ */
+thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: express.Response) {
+    const db = admin.firestore();
+    const uid = req.params.uid;
+    const tokenDoc = await db.collection("tokens").doc(uid).get();
+
+    // //const tokenDocAll = await db.collection("tokens").doc("all").get();
+    // //const tokenData = await tokenDocAll.data();
+    // const tokenData = {
+    //     "NETM": 500,
+    //     "TESE": 100,
+    //     "TESE1": 100,
+    //     "TESE2": 300,
+    //   }
+    // let tokenName = "YUCK";
+    // if (tokenData) {
+    //     const names = Object.keys(tokenData);
+    //     let sameNames = 0;
+    //     names.forEach((name, index) => {
+    //         if (name.slice(0, 4) == tokenName) {
+    //             sameNames++;
+    //         }
+    //     });
+
+    //     // append a number to the end of the name there was at least 1 match
+    //     if(sameNames > 0){
+    //         tokenName = tokenName + sameNames.toString();
+    //     }
+    //     console.log(tokenName);
+    // }
+
+
+    if (tokenDoc.exists) {
+        const tokenData = tokenDoc.data();
+        res.status(200).send({
+            success: true,
+            status: 200,
+            tokens: tokenData
+        });
+        return;
+    }
+    else {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "User does not exist!"
+        });
+        return;
+    }
+});
+
+/**
  * Retrieves the wallet address and balances of a user.
  * Add ?force_update=true to force an update
  */
@@ -35,20 +88,19 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
     const db = admin.firestore();
     const uid = req.params.uid;
     const userDoc = await db.collection("users").doc(uid).get();
-    console.log(req.query);
 
     if (userDoc.exists) {
         let vaultWallet;
         let vaultBalance;
-        if(req.query.force_update){
+        if (req.query.force_update) {
             vaultWallet = await forceUpdateGetVaultWallet(uid);
             vaultBalance = vaultWallet.body.balance;
-        }   
+        }
         else {
             vaultWallet = await getVaultWallet(uid);
             vaultBalance = vaultWallet.body.balance;
         }
-        
+
 
         if (!vaultWallet.status) {
             res.status(200).send({
@@ -557,7 +609,29 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
         const username = userData?.username;
 
         // just grab first 4 letters to make the token name
-        const tokenName = username.slice(0, 4).toUpperCase();
+        let tokenName = username.slice(0, 4).toUpperCase();
+
+        // check if a token with that name already exists
+        // if it exists, we append a number
+        const tokenDocAll = await db.collection("tokens").doc("all").get();
+        const tokenData = await tokenDocAll.data();
+        if (tokenData) {
+            const names = Object.keys(tokenData);
+            let sameNames = 0;
+
+            // look for four letter name matches
+            names.forEach((name, index) => {
+                if (name.slice(0, 4) == tokenName) {
+                    sameNames++;
+                }
+            });
+    
+            // append number of matches to the end of the name to produce a unique name
+            if(sameNames > 0){
+                tokenName = tokenName + sameNames.toString();
+            }
+        }
+
 
         // this address will be the owner of the contract
         //const streamerAddress = userData?.tokenWallet;
