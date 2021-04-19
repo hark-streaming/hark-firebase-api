@@ -17,13 +17,15 @@ const chainId = thetajs.networks.ChainIds.Testnet; // TESTNET
 //const chainId = thetajs.networks.ChainIds.Mainnet; //MAINNET
 
 // Contract Bytecode/ABI Globals
-const ELECTION_ABI = require("./contracts/hark_election_abi.json");
-const ELECTION_BYTECODE = require("./contracts/hark_election_bytecode.json");
-const GOVERNANCE_ABI = require("./contracts/hark_governance_abi.json");
-const GOVERNANCE_BYTECODE = require("./contracts/hark_governance_bytecode.json");
-//const PLATFORM_ABI = require("./contracts/hark_platform_token_abi.json");
-//const PLATFORM_BYTECODE = require("./contracts/hark_platform_token_bytecode.json");
-const PLATFORM_ADDRESS = "0xb1cd0dac72d31f03fd0a0e77eb615acbd6993c6c";
+const ELECTION_ABI = require("./contracts/Final_GovernanceElection_ABI");
+const ELECTION_BYTECODE = require("./contracts/Final_GovernanceElection_Bytecode");
+const GOVERNANCE_ABI = require("./contracts/Hark_Governance_Token_ABI");
+const GOVERNANCE_BYTECODE = require("./contracts/Hark_Governance_Token_Bytecode");
+//const PLATFORM_ABI = require("./contracts/Hark_Platform_Bytecode");
+//const PLATFORM_BYTECODE = require("./contracts/Hark_Platform_Token_ABI");
+const PLATFORM_ADDRESS = "0xe69531fc1fd0f1e0197e88fa526d756ad2310f1c";
+//gov address 0x26ea54d161be951f14f6d84eb17292cdcaaec316
+//elec address 0xae0425d214db38bc90a48abf40dcd48ff2bca3e9
 
 /**
  * Retrieves the wallet address and balances of a user.
@@ -714,9 +716,7 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
         // Simulate a deploy to check tfuel price and general errors
         // Election contract requires governance addresss to deploy
         const simulatedResult = await contractToDeploy.simulateDeploy(governanceAddress);
-        // For some reason simulating will create an error, yet actually deploying it works
-        // Thus, let's just ignore the error then
-        if (simulatedResult /*.vm_error == ''*/) {
+        if (simulatedResult.vm_error == '') {
             // no deployment error
             // check if we got enough tfuel in the wallet
             const gasReq = parseInt(simulatedResult.gas_used);
@@ -1020,16 +1020,14 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
 
         // data for election contract write
         const electionAddress = userData?.electionAddress;
-        const pollNumChoices = pollData?.[pollId].answers.length;
-        const pollEndTime = pollData?.[pollId].endTime;
-
-        
+        const pollOptionCount = parseInt(pollData?.[pollId].answers.length);
+        const pollDeadline = parseInt(pollData?.[pollId].deadline);
 
         // generate a vault access token
         let accessToken = generateAccessToken(uid);
 
         // call the contract to make the poll...
-        let transaction = await deployElectionPoll(electionAddress, uid, accessToken, pollNumChoices, pollEndTime);
+        let transaction = await deployElectionPoll(electionAddress, uid, accessToken, pollOptionCount, pollDeadline);
 
         // log transaction
         if (transaction.hash) {
@@ -1041,7 +1039,9 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
 
             // write down the time we sent the transaction for the poll
             await db.collection("polls").doc(uid).set({
-                sentTimestamp: sentTimestamp
+                0: {
+                    sentTimestamp: sentTimestamp
+                }
             }, { merge: true });
 
             // now we're done with the poll deployment
@@ -1076,7 +1076,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
     /**
     * Function for a vault wallet to donate to a smart contract and receive governance tokens
     */
-    async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollNumChoices: number, pollEndTime: number) {
+    async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
         // set up the provider (our partner key is on testnet)
         let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
         provider.setPartnerId(functions.config().theta.partner_id);
@@ -1084,8 +1084,11 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         provider.setAccessToken(accessToken);
 
         // We will broadcast the transaction afterwards
-        provider.setAsync(true);
-        provider.setDryrun(true);
+        //provider.setAsync(true);
+        //provider.setDryrun(true);
+
+        provider.setAsync(false);
+        provider.setDryrun(false);
 
         // set up the contract
         let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
@@ -1096,11 +1099,15 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         // const amountWei = (new BigNumber(amount)).multipliedBy(ten18);
         // const overrides = {
         //     gasLimit: 100000, //override the default gasLimit
-        //     value: amountWei // tfuelWei to send
+        //     //value: amountWei // tfuelWei to send
         // };
 
         // execute the smart contract transaction using the donor's vault wallet
-        let transaction = await contract.feqfew(pollNumChoices, pollEndTime);
+        //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline, overrides);
+        //console.log(estimatedGas);
+        // needs uint8 and uint256
+        //let transaction = await contract.createElection(pollOptionCount, pollDeadline);
+        let transaction = await contract.createElection(2, '1618975679');
 
         console.log(transaction);
 
