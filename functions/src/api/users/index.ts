@@ -26,30 +26,35 @@ export let userRouter = express.Router();
  *   tags: [{name: tag}, {name2: tag2}]
  * }
  */
-/* TODO: to be finished
+/* TODO: to be finished */
 userRouter.post("/upgrade/:uid", async function (req: express.Request, res: express.Response) {
     // Verify captcha token with hcaptcha
     const hcaptchaRes = await verifyCaptcha(req);
 
     // upgrade the user if captcha passes
-    let response;
-    let status;
     if (hcaptchaRes.data.success) {
         // update their user doc with new info
 
         // then create a streamdoc
-        response = await registerStreamer(req);
-        status = response.status;
+        //response = await registerStreamer(req);
+
+        res.status(200).send({
+            success: true,
+            status: 200,
+            message: "User upgraded to streamer"
+        });
+        return;
     }
     else {
-        status = 500;
-        response = hcaptchaRes.data;
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Captcha verification failed"
+        });
+        return;
     }
 
-    // return response
-    res.status(status).json(response);
-
-});*/
+});
 
 // checks captcha, then registers user
 // their account type is based on the fields sent in the request
@@ -197,19 +202,20 @@ async function registerUser(req: express.Request) {
     };
 }
 
-/* TODO: to be finished
-async function createStreamer(uid: String, tag: String[],) {
+/* TODO: to be finished*/
+async function createStreamDoc(username: string, uid: string, tags: string[]) {
     // the firestore
     const db = admin.firestore();
+    
 
     // add an entry into the firestore with their streamer data
-    let tags: string[] = [];
-    req.body.tags.forEach((element: { name: string; }) => {
-        tags.push(element.name);
-    });
+    // let tags: string[] = [];
+    // req.body.tags.forEach((element: { name: string; }) => {
+    //     tags.push(element.name);
+    // });
 
-    await db.collection("streams").doc(req.body.username).set({
-        title: req.body.username,
+    await db.collection("streams").doc(username).set({
+        title: username,
         description: "Default description!",
         timestamp: Date.now(),
         poster: "https://media.discordapp.net/attachments/814278920168931382/819072942507556914/hark-logo-high-res.png?width=1025&height=280",
@@ -217,11 +223,11 @@ async function createStreamer(uid: String, tag: String[],) {
         live: false,
         nsfw: false,
         archive: false,
-        url: "http://13.59.151.129:8080/hls/" + req.body.username + ".m3u8",
-        name: req.body.username,
-        owner: userRecord.uid,
+        url: "http://13.59.151.129:8080/hls/" + username + ".m3u8",
+        name: username,
+        owner: uid,
         avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
-        to: "/channel/" + req.body.username,
+        to: "/channel/" + username,
         banned: false,
         tags: tags,
         donateMsg: "",
@@ -244,7 +250,7 @@ async function createStreamer(uid: String, tag: String[],) {
         return pass;
     }
 
-    await db.collection("users").doc(userRecord.uid).update({
+    await db.collection("users").doc(uid).update({
         streamkey: generateP(),
     });
 
@@ -253,7 +259,7 @@ async function createStreamer(uid: String, tag: String[],) {
         status: 200,
         message: "oh yeah streamer registered"
     };
-}*/
+}
 
 // verifies the hcaptcha and returns the result
 async function verifyCaptcha(req: express.Request) {
