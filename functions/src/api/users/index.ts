@@ -37,6 +37,7 @@ userRouter.post("/upgrade/:uid", async function (req: express.Request, res: expr
 
         // then create a streamdoc
         //response = await registerStreamer(req);
+        await createStreamDoc("test", "test", ["test"]);
 
         res.status(200).send({
             success: true,
