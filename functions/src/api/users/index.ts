@@ -29,7 +29,7 @@ userRouter.get("/check-username/:username", async function (req: express.Request
             success: true,
             status: 200,
             valid: true,
-            message: "Username ais valid"
+            message: "Username is valid"
         });
         return;
     }
@@ -55,9 +55,12 @@ userRouter.post("/register", async function (req: express.Request, res: express.
         const name = req.body.name;
         const phone = req.body.phone;
         let tags: string[] = [];
-        req.body.tags.forEach((element: { name: string; }) => {
-            tags.push(element.name);
-        });
+        if(req.body.tags){
+            req.body.tags.forEach((element: { name: string; }) => {
+                tags.push(element.name);
+            });
+        }
+        
 
         // check if username is unique
         const exists = await checkUsernameExists(req.body.username);
