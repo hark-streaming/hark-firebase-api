@@ -298,22 +298,22 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     // check id token
-    // const result = await verifyIdToken(req.body.idToken);
-    // if (!result.success) {
-    //     // failed, send em back
-    //     res.status(200).send(result);
-    // }
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
 
-    // // firebase auth token
-    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    // firebase auth token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
 
-    // // uid of the user that is donating
-    // const uid = decodedToken.uid;
+    // uid of the user that is donating
+    const uid = decodedToken.uid;
 
     // firestore
     const db = admin.firestore();
 
-    const uid = req.body.idToken; // FOR TESTING
+    //const uid = req.body.idToken; // FOR TESTING
 
     // uid of the streamer receiving the donation
     const streameruid = req.params.streameruid;
@@ -1083,11 +1083,11 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
  */
 thetaRouter.post("/deploy-election-poll", async function (req: express.Request, res: express.Response) {
     // check id token
-    // const result = await verifyIdToken(req.body.idToken);
-    // if (!result.success) {
-    //     // failed, send em back
-    //     res.status(200).send(result);
-    // }
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
 
     try {
         // get the firestore
