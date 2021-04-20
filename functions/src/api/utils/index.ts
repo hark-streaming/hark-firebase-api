@@ -111,7 +111,106 @@ utilsRouter.post("/jwtauth", async (req: express.Request, res: express.Response)
 
 });
 
-// checks if a username has already been registered or not
-// utilsRouter.post("/check-username", async (req: express.Request, res: express.Response) => {
+/**
+ * Delete a user from firebase by removing all their docs and firebase auth
+ * Requires an admin key in the header
+ * headers: {
+ *   auth: "myharkadminkey"
+ * }
+ */
+utilsRouter.post("/delete/:uid", async (req: express.Request, res: express.Response) => {
+    // check admin auth key
+    const authkey = req.headers.auth;
+    if (authkey != functions.config().hark_admin.key) {
+        res.status(200).send({
+            success: false,
+            status: 401,
+            message: "unauthorized",
+        });
+        return;
+    }
 
-// });
+    // delete the user
+    try {
+        const uid = req.params.uid;
+
+        // check if user exists
+        const db = admin.firestore();
+        const userDoc = await db.collection("users").doc(uid).get();
+        if(!userDoc.exists){
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "user does not exist",
+            });
+            return;
+        }
+        const userData = await userDoc.data();
+        const username = userData?.username;
+
+
+        // first, delete their auth from firebase
+        await admin.auth().deleteUser(uid);
+
+        // wipe their user doc
+        await db.collection("users").doc(uid).delete();
+
+        // TODO: remove their name from usernames?
+
+        // wipe their stream doc
+        const streamDoc = await db.collection("streams").doc(username).get();
+        if(streamDoc.exists){
+            await db.collection("streams").doc(uid).delete();
+        }
+
+        // wipe their polls
+        const pollDoc = await db.collection("polls").doc(uid).get();
+        if(pollDoc.exists){
+            await db.collection("polls").doc(uid).delete();
+        }
+
+        // wipe their dcards
+        const dcardDoc = await db.collection("dcards").doc(uid).get();
+        if(dcardDoc.exists){
+            await db.collection("dcards").doc(uid).delete();
+        }
+
+        // wipe their cashout
+        const cashoutDoc = await db.collection("cashout").doc(uid).get();
+        if(cashoutDoc.exists){
+            await db.collection("cashout").doc(uid).delete();
+        }
+
+        // wipe their requests
+        const requestsDoc = await db.collection("requests").doc(uid).get();
+        if(requestsDoc.exists) {
+            await db.collection("requests").doc(uid).delete();
+        }
+
+        // wipe their followers
+        // TODO: needs to be cleaned up a bit to potentially remove following/ers
+        const followersDoc = await db.collection("followers").doc(uid).get();
+        if(followersDoc.exists){
+            await db.collection("followers").doc(uid).delete();
+        }
+
+        // all deleted
+        res.status(200).send({
+            success: true,
+            status: 200,
+            message: "USER DELETED",
+        });
+        return;
+
+    }
+    catch {
+        res.status(200).send({
+            success: false,
+            status: 500,
+            message: "error deleting user",
+        });
+        return;
+    }
+
+
+});
