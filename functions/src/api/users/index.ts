@@ -296,7 +296,7 @@ async function createStreamDoc(username: string, uid: string, tags: string[]) {
         live: false,
         nsfw: false,
         archive: false,
-        url: "http://13.59.151.129:8080/hls/" + username + ".m3u8",
+        url: "https://stream.hark.tv/hls/" + username + ".m3u8",
         name: username,
         owner: uid,
         avatar: "https://media.discordapp.net/attachments/814278920168931382/819073087021776906/hark-logo-h-high-res.png?width=499&height=499",
