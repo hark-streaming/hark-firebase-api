@@ -46,9 +46,6 @@ dcardsRouter.get("/get/list", async (req: express.Request, res: express.Response
 
     // send off the response!
     res.status(cards.status).json(cards);
-
-
-
 });
 
 // query a specific user's card

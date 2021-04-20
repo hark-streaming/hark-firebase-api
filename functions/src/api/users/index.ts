@@ -17,8 +17,9 @@ userRouter.get("/check-username/:username", async function (req: express.Request
     const exists = await checkUsernameExists(req.body.username);
     if (exists) {
         res.status(200).send({
-            success: false,
+            success: true,
             status: 200,
+            valid: false,
             message: "Username already exists"
         });
         return;
@@ -27,6 +28,7 @@ userRouter.get("/check-username/:username", async function (req: express.Request
         res.status(200).send({
             success: true,
             status: 200,
+            valid: true,
             message: "Username ais valid"
         });
         return;
