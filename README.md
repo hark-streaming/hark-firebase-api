@@ -11,10 +11,10 @@ Run the command `firebase emulators:export ./emulator_firestore` to export the c
 # Modifying Environment variables
 check https://firebase.google.com/docs/functions/config-env
 
-`firebase functions:config:get` to see current env variables
+`firebase --project=development functions:config:get` to see current env variables
 
 example setting environment variable
-`firebase functions:config:set someservice.key="THE API KEY" someservice.id="THE CLIENT ID"`
+`firebase --project=development functions:config:set someservice.key="THE API KEY" someservice.id="THE CLIENT ID"`
 
 
 ## Deploying
