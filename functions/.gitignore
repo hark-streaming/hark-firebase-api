@@ -10,4 +10,4 @@ typings/
 node_modules/
 
 #private key
-hark-e2efe-firebase-adminsdk-vmx2u-c09484c0ad.json
+hark-*.json

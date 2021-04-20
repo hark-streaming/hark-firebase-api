@@ -82,11 +82,13 @@ userRouter.post("/register", async function (req: express.Request, res: express.
                 return;
             }
         }
-        catch {
+        catch(err) {
+            console.log(err);
             res.status(200).send({
                 success: false,
                 status: 500,
-                message: "Registration error"
+                message: "Registration error",
+                //err: err
             });
             return;
         }
@@ -301,9 +303,9 @@ async function createStreamDoc(username: string, uid: string, tags: string[]) {
         to: "/channel/" + username,
         banned: false,
         tags: tags,
-        donateMsg: "",
-        donateOn: "",
-        donateUrl: "",
+        donateMsg: "Donate",
+        donateOn: false,
+        donateUrl: "https://hark.tv/",
     });
 
     function generateP() {
