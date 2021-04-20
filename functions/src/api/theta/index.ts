@@ -298,22 +298,22 @@ thetaRouter.put("/cashout", async function (req: express.Request, res: express.R
  */
 thetaRouter.post("/donate/:streameruid", async function (req: express.Request, res: express.Response) {
     // check id token
-    const result = await verifyIdToken(req.body.idToken);
-    if (!result.success) {
-        // failed, send em back
-        res.status(200).send(result);
-    }
+    // const result = await verifyIdToken(req.body.idToken);
+    // if (!result.success) {
+    //     // failed, send em back
+    //     res.status(200).send(result);
+    // }
 
-    // firebase auth token
-    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    // // firebase auth token
+    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
 
-    // uid of the user that is donating
-    const uid = decodedToken.uid;
+    // // uid of the user that is donating
+    // const uid = decodedToken.uid;
 
     // firestore
     const db = admin.firestore();
 
-    //const uid = req.body.idToken; // FOR TESTING
+    const uid = req.body.idToken; // FOR TESTING
 
     // uid of the streamer receiving the donation
     const streameruid = req.params.streameruid;
@@ -359,16 +359,6 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             return;
         }
 
-        // leave if no governance contract to donate to
-        if (!governanceAddress) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "missing governance contract",
-            });
-            return;
-        }
-
     }
     catch (err) {
         res.status(200).send({
@@ -381,6 +371,46 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
     // execute the donation
     try {
+        // if no governance contract, we just donate wallet-to-wallet
+        if (!governanceAddress) {
+            let transfer = await axios.post(`http://api-partner-testnet.thetatoken.org/xact/transfer`,
+                {
+                    "sender_id": uid,
+                    "recipient_id": streameruid,
+                    "external_type": "donation",
+                    "amount": amount,
+                    "metadata": {
+                        "note": "Hark direct vault wallet donation"
+                    }
+                },
+                {
+                    headers: {
+                        'content-type': 'application/json',
+                        "x-api-key": functions.config().theta.xapikey
+                    },
+                }
+            );
+
+            // donate good
+            if (transfer.data.status == "success") {
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "Donation to vault wallet successful"
+                });
+                return;
+            }
+
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: "Vault wallet donate error"
+            });
+            return;
+        }
+
+
+
         // generate a vault access token
         let accessToken = generateAccessToken(uid);
 
@@ -428,7 +458,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             res.status(200).send({
                 success: true,
                 status: 200,
-                message: "Donation successful"
+                message: "Donation to smart contract successful"
             });
             return;
 
@@ -625,9 +655,9 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
                     sameNames++;
                 }
             });
-    
+
             // append number of matches to the end of the name to produce a unique name
-            if(sameNames > 0){
+            if (sameNames > 0) {
                 tokenName = tokenName + sameNames.toString();
             }
         }
