@@ -9,7 +9,7 @@ import * as functions from "firebase-functions";
 const thetajs = require("./thetajs.cjs.js");
 import { BigNumber } from "bignumber.js";
 
-import { getElectionCount, electionHasEnded, deployElectionPoll } from "./election";
+import { getElectionCount, electionHasEnded, deployElectionPoll, vote } from "./election";
 import { generateAccessToken, getVaultWallet, forceUpdateGetVaultWallet } from "./vaultwallet"
 
 export let thetaRouter = express.Router();
@@ -1086,7 +1086,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             //await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
 
             // now we read the contract to get the corresponding id
-            const electionId:number = await getElectionCount(electionAddress, chainId);
+            const electionId: number = await getElectionCount(electionAddress, chainId);
 
             // write down data
             await db.collection("polls").doc(uid).set({
@@ -1140,21 +1140,20 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
  */
 thetaRouter.post("/cast-vote", async function (req: express.Request, res: express.Response) {
     // check id token
-    const result = await verifyIdToken(req.body.idToken);
-    if (!result.success) {
-        // failed, send em back
-        res.status(200).send(result);
-    }
-    // get the uid from the id token
-    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-    const voterUid = decodedToken.uid;
-    console.log(voterUid)
+    // const result = await verifyIdToken(req.body.idToken);
+    // if (!result.success) {
+    //     // failed, send em back
+    //     res.status(200).send(result);
+    // }
+    // // get the uid from the id token
+    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    // const voterUid = decodedToken.uid;
 
     try {
         // get the firestore
         const db = admin.firestore();
 
-        //const uid = req.body.idToken; //FOR TESTING
+        const voterUid = req.body.idToken; //FOR TESTING
 
         // data for the poll
         const streamerUid = req.body.streamerUid;
@@ -1211,18 +1210,64 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
 
         // check contract to see if poll is expired
         const electionAddress = userData?.electionAddress;
-        const hasEnded = electionHasEnded(electionAddress, chainId, pollId);
-        if(hasEnded) {
+        const electionId = pollData?.[pollId]?.electionId;
+        const hasEnded = await electionHasEnded(electionAddress, chainId, electionId);
+        if (hasEnded) {
             res.status(200).send({
                 success: false,
                 status: 500,
                 message: "The poll has ended"
             });
             return;
-        }       
+        }
 
         // finally, vote
-        
+        try {
+            const accessToken = generateAccessToken(voterUid);
+            const result = await vote(electionAddress, voterUid, accessToken, choice, electionId);
+
+            if (result.hash) {
+                // write our voting data into poll
+                // TODO: increment vote
+                // await db.collection("polls").doc(streamerUid).set({
+                //     [pollId]: {
+                //         answers: [{
+                //            [choice]: {
+                //                value: admin.firestore.FieldValue.increment(1)
+                //            }
+                //         }]
+                //     }
+                // }, { merge: true });
+
+                // write voting data into user
+                await db.collection("votes").doc(voterUid).set({
+                    [result.block.Timestamp]: {
+                        hash: result.hash,
+                        streamerUid: streamerUid,
+                        pollId: pollId,
+                        choice: choice
+                    }
+                }, { merge: true });
+
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "Vote successful"
+                });
+                return;
+            }
+        }
+        catch(err) {
+            console.log(err);
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Smart contract voting error"
+            });
+            return;
+        }
+
+
 
     }
     catch (err) {
