@@ -5,6 +5,7 @@ import axios from "axios";
 import * as express from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import { body, validationResult } from 'express-validator';
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
@@ -39,80 +40,90 @@ userRouter.get("/check-username/:username", async function (req: express.Request
  * Registers a user to the firebase
  * Requires a valid hcaptcha token
  */
-userRouter.post("/register", async function (req: express.Request, res: express.Response) {
-    // Verify captcha token with hcaptcha
-    const hcaptchaSuccess = await verifyCaptcha(req.body.captcha);
-
-    // register the user if captcha passes
-    if (hcaptchaSuccess) {
-
-        // all the fields needed for a user
-        const username = req.body.username;
-        const email = req.body.email;
-        const password = req.body.password;
-        const role = req.body.role;
-        const ein = req.body.ein;
-        const name = req.body.name;
-        const phone = req.body.phone;
-        let tags: string[] = [];
-        if(req.body.tags){
-            req.body.tags.forEach((element: { name: string; }) => {
-                tags.push(element.name);
-            });
-        }
-        
-
-        // check if username is unique
-        const exists = await checkUsernameExists(req.body.username);
-        if (exists) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Username already exists"
-            });
-            return;
+userRouter.post("/register",
+    body("username").isLength({ min: 3 }).trim().escape(),
+    body("email").isEmail().normalizeEmail(),
+    body("password").isLength({ min: 8 }),
+    async function (req: express.Request, res: express.Response) {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
         }
 
-        // register the user
-        try {
-            const result = await registerUser(username, email, password, role, ein, name, phone, tags);
-            if (result.success) {
+        // Verify captcha token with hcaptcha
+        const hcaptchaSuccess = await verifyCaptcha(req.body.captcha);
+
+        // register the user if captcha passes
+        if (hcaptchaSuccess) {
+
+            // all the fields needed for a user
+            const username = req.body.username;
+            const email = req.body.email;
+            const password = req.body.password;
+            const role = req.body.role;
+
+            const ein = req.body.ein;
+            const name = req.body.name;
+            const phone = req.body.phone;
+            let tags: string[] = [];
+            if (req.body.tags) {
+                req.body.tags.forEach((element: { name: string; }) => {
+                    tags.push(element.name);
+                });
+            }
+
+
+            // check if username is unique
+            const exists = await checkUsernameExists(req.body.username);
+            if (exists) {
                 res.status(200).send({
-                    success: true,
-                    status: 200,
-                    message: "User registered"
+                    success: false,
+                    status: 400,
+                    message: "Username already exists"
                 });
                 return;
             }
-        }
-        catch(err) {
-            console.log(err);
+
+            // register the user
+            try {
+                const result = await registerUser(username, email, password, role, ein, name, phone, tags);
+                if (result.success) {
+                    res.status(200).send({
+                        success: true,
+                        status: 200,
+                        message: "User registered"
+                    });
+                    return;
+                }
+            }
+            catch (err) {
+                console.log(err);
+                res.status(200).send({
+                    success: false,
+                    status: 500,
+                    message: "Registration error",
+                    //err: err
+                });
+                return;
+            }
+
+
             res.status(200).send({
                 success: false,
                 status: 500,
-                message: "Registration error",
-                //err: err
+                message: "unknown registration error"
             });
             return;
         }
-
-
-        res.status(200).send({
-            success: false,
-            status: 500,
-            message: "unknown registration error"
-        });
-        return;
-    }
-    else {
-        res.status(200).send({
-            success: false,
-            status: 400,
-            message: "Captcha verification failed"
-        });
-        return;
-    }
-});
+        else {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Captcha verification failed"
+            });
+            return;
+        }
+    });
 
 /**
  * Upgrade the provided uid of a normal user to a streamer, given the correct info

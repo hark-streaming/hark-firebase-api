@@ -32,14 +32,38 @@ app.disable("x-powered-by");
 // options for cors
 // TODO: change origin permissions
 var corsOptions = {
-  //origin: "http://127.0.0.1:3001",
-  //origin: ["https://demo.hark.tv", "http://127.0.0.1:3000"],
-  origin: "*",
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+    //origin: "http://127.0.0.1:3001",
+    //origin: ["https://demo.hark.tv", "http://127.0.0.1:3000"],
+    origin: "*",
+    optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }
 
 // enable cors
 app.use(cors(corsOptions));
+
+// firebase idToken middleware
+app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.body.idToken) {
+        try {
+            // check token
+            await admin.auth().verifyIdToken(req.body.idToken);
+
+            // is valid, continue on
+            next();
+        }
+        catch (err) {
+            res.status(401).send({
+                success: false, // MAKE SURE ENABLED ON PROD
+                //success: true, // DISABLE AUTH FOR TESTING
+                status: 401,
+                message: "Invalid id token"
+            });
+        }
+    }
+    else {
+        next();
+    }
+})
 
 // Any requests to /api/users will be routed to the user router!
 app.use("/users", usersApi.userRouter);
@@ -60,37 +84,37 @@ app.use("/dcards", dcardsApi.dcardsRouter);
 app.use("/theta", thetaApi.thetaRouter);
 
 app.post("/reports", async function getUser(req: express.Request, res: express.Response) {
-  // Verify captcha token with hcaptcha
-  const params = new URLSearchParams();
-  params.append('response', req.body.captcha);
-  params.append('secret', functions.config().hcaptcha_secret.key);
-  const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
+    // Verify captcha token with hcaptcha
+    const params = new URLSearchParams();
+    params.append('response', req.body.captcha);
+    params.append('secret', functions.config().hcaptcha_secret.key);
+    const hcaptchaRes = await axios.post('https://hcaptcha.com/siteverify', params);
 
-  let response;
-  let status;
-  const db = admin.firestore();
-  if (hcaptchaRes.data.success) {
-    await db.collection("reports").doc().set({
-      name: req.body.name,
-      email: req.body.email,
-      subject: req.body.subject,
-      report: req.body.report
-    });
-    response = { success: true };
-    status = 200;
-  }
-  else {
-    status = 500;
-    response = hcaptchaRes.data;
-  }
+    let response;
+    let status;
+    const db = admin.firestore();
+    if (hcaptchaRes.data.success) {
+        await db.collection("reports").doc().set({
+            name: req.body.name,
+            email: req.body.email,
+            subject: req.body.subject,
+            report: req.body.report
+        });
+        response = { success: true };
+        status = 200;
+    }
+    else {
+        status = 500;
+        response = hcaptchaRes.data;
+    }
 
-  res.status(status).json(response);
+    res.status(status).json(response);
 });
 
 // Again, lets be nice and help the poor wandering servers, any requests to /api
 // that are not /api/users will result in 404.
 app.get("*", async (req: express.Request, res: express.Response) => {
-  res.status(404).send("This route does not exist.");
+    res.status(404).send("This route does not exist.");
 });
 
 exports.api = functions.https.onRequest(app);
