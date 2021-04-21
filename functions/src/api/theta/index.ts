@@ -11,6 +11,7 @@ import { BigNumber } from "bignumber.js";
 
 import { getElectionCount, electionHasEnded, deployElectionPoll, vote } from "./election";
 import { generateAccessToken, getVaultWallet, forceUpdateGetVaultWallet } from "./vaultwallet"
+//import {balanceOf} from "./governance";
 
 export let thetaRouter = express.Router();
 
@@ -1140,20 +1141,20 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
  */
 thetaRouter.post("/cast-vote", async function (req: express.Request, res: express.Response) {
     // check id token
-    // const result = await verifyIdToken(req.body.idToken);
-    // if (!result.success) {
-    //     // failed, send em back
-    //     res.status(200).send(result);
-    // }
-    // // get the uid from the id token
-    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-    // const voterUid = decodedToken.uid;
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
+    // get the uid from the id token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const voterUid = decodedToken.uid;
 
     try {
         // get the firestore
         const db = admin.firestore();
 
-        const voterUid = req.body.idToken; //FOR TESTING
+        //const voterUid = req.body.idToken; //FOR TESTING
 
         // data for the poll
         const streamerUid = req.body.streamerUid;
