@@ -9,7 +9,8 @@ import * as functions from "firebase-functions";
 const thetajs = require("./thetajs.cjs.js");
 import { BigNumber } from "bignumber.js";
 
-import { getElectionCount } from "./election";
+import { getElectionCount, electionHasEnded, deployElectionPoll } from "./election";
+import { generateAccessToken, getVaultWallet, forceUpdateGetVaultWallet } from "./vaultwallet"
 
 export let thetaRouter = express.Router();
 
@@ -104,61 +105,6 @@ thetaRouter.get("/address/:uid", async function (req: express.Request, res: expr
         return;
     }
 });
-
-/**
- * Helper function to query theta for details of a vault wallet
- */
-async function getVaultWallet(uid: string) {
-
-    // call theta's partner api to get a wallet
-    let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet`, {
-        headers: {
-            "x-api-key": functions.config().theta.xapikey
-        }
-    });
-    return req.data;
-}
-
-/**
- * Helper function to query theta and force refresh the wallet balance
- * Use this after making a donation to reflect the changes
- */
-async function forceUpdateGetVaultWallet(uid: string) {
-    // call theta's partner api to get a wallet
-    let req = await axios.get(`https://api-partner-testnet.thetatoken.org/user/${uid}/wallet?force_update=true`, {
-        headers: {
-            "x-api-key": functions.config().theta.xapikey
-        }
-    });
-    return req.data;
-}
-
-/**
- * Helper function to generate a vault access token
- */
-function generateAccessToken(uid: string) {
-    // taken from theta email
-    const jwt = require('jsonwebtoken');
-    const algorithm = { algorithm: "HS256" };
-    let apiKey = functions.config().theta.api_key;
-    let apiSecret = functions.config().theta.api_secret;
-    let userId = uid;
-
-    function genAccessToken(apiKey: string, apiSecret: string, userId: string) {
-        let expiration = new Date().getTime() / 1000;
-        expiration += 120; // 2 minutes is what we use
-        let payload = {
-            api_key: apiKey,
-            user_id: userId,
-            iss: "auth0",
-            exp: expiration
-        };
-        return jwt.sign(payload, apiSecret, algorithm);
-    }
-    let accessToken = genAccessToken(apiKey, apiSecret, userId);
-
-    return accessToken;
-}
 
 /**
  * Helper function to verify a firebase idtoken
@@ -1180,40 +1126,6 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         return;
     }
 
-    /**
-    * Function for a vault wallet to donate to a smart contract and receive governance tokens
-    * This one is not async since we need to get the blockchain id of the poll after transaction
-    */
-    async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
-        // set up the provider (our partner key is on testnet)
-        let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
-        provider.setPartnerId(functions.config().theta.partner_id);
-        provider.setUserId(uid);
-        provider.setAccessToken(accessToken);
-
-        // We will broadcast the transaction afterwards
-        //provider.setAsync(true);
-        //provider.setDryrun(true);
-
-        provider.setAsync(false);
-        provider.setDryrun(false);
-
-        // set up the contract
-        let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
-        let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
-
-        // execute the smart contract transaction using the donor's vault wallet
-        //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline, overrides);
-        //console.log(estimatedGas);
-
-        let transaction = await contract.createElection(pollOptionCount, pollDeadline);
-
-        console.log(transaction);
-
-        // return the transaction data
-        return transaction.result;
-    };
-
 });
 
 
@@ -1221,7 +1133,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
  * Cast a vote to a specific streamer's poll
  * {
  *   idToken: firebase id token of the voter
- *   streamerUid:
+ *   streamerUid: streamer
  *   pollId:
  *   choice:
  * }
@@ -1233,28 +1145,46 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
         // failed, send em back
         res.status(200).send(result);
     }
+    // get the uid from the id token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const voterUid = decodedToken.uid;
+    console.log(voterUid)
 
     try {
         // get the firestore
         const db = admin.firestore();
 
-        // get the uid from the id token
-        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-        const voterUid = decodedToken.uid;
-        console.log(voterUid);
-
         //const uid = req.body.idToken; //FOR TESTING
 
         // data for the poll
-        const streamerUid = req.params.streamerUid;
-        const pollId = req.params.pollId;
-        const choice = req.params.choice;
+        const streamerUid = req.body.streamerUid;
+        const pollId = req.body.pollId;
+        const choice = req.body.choice;
 
 
         // check if streamer exists
-        const streamerDoc = await db.collection("users").doc(streamerUid).get();
-        if (streamerDoc.exists) {
+        const streamerRef = await db.collection("users").doc(streamerUid);
+        if (!streamerRef) {
+            // streamer does no exist
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Streamer does not exist"
+            });
+            return;
+        }
 
+        // check if election contract exists
+        const userDoc = await db.collection("users").doc(streamerUid).get();
+        const userData = userDoc.data();
+        if (!userData?.electionAddress) {
+            // no address, no election contract
+            res.status(200).send({
+                success: false,
+                status: 403,
+                message: "Missing election smart contract"
+            });
+            return;
         }
 
         // check if we have poll data
@@ -1270,7 +1200,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             return;
         }
         // check if the choice exists in the poll
-        else if (!pollData?.[pollId]?.[choice]) {
+        else if (!pollData?.[pollId]?.answers?.[choice]) {
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -1279,7 +1209,20 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             return;
         }
 
-        // blockchain time
+        // check contract to see if poll is expired
+        const electionAddress = userData?.electionAddress;
+        const hasEnded = electionHasEnded(electionAddress, chainId, pollId);
+        if(hasEnded) {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "The poll has ended"
+            });
+            return;
+        }       
+
+        // finally, vote
+        
 
     }
     catch (err) {

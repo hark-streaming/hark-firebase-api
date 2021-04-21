@@ -1,5 +1,6 @@
 const thetajs = require("./thetajs.cjs.js");
 const ELECTION_ABI = require("./contracts/GovernanceElection_ABI");
+import * as functions from "firebase-functions";
 
 /**
  * Function to read getElectionCount of the election contract
@@ -115,6 +116,40 @@ function makeReadContract(contractAddress: string, chainId: string){
     return contract;
 }
 
+ /**
+    * Function for a vault wallet to donate to a smart contract and receive governance tokens
+    * This one is not async since we need to get the blockchain id of the poll after transaction
+    */
+  async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
+    // set up the provider (our partner key is on testnet)
+    let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
+    provider.setPartnerId(functions.config().theta.partner_id);
+    provider.setUserId(uid);
+    provider.setAccessToken(accessToken);
+
+    // We will broadcast the transaction afterwards
+    //provider.setAsync(true);
+    //provider.setDryrun(true);
+
+    provider.setAsync(false);
+    provider.setDryrun(false);
+
+    // set up the contract
+    let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
+    let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
+
+    // execute the smart contract transaction using the donor's vault wallet
+    //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline, overrides);
+    //console.log(estimatedGas);
+
+    let transaction = await contract.createElection(pollOptionCount, pollDeadline);
+
+    //console.log(transaction);
+
+    // return the transaction data
+    return transaction.result;
+};
+
 export {
     getElectionCount,
     electionHasEnded,
@@ -123,4 +158,5 @@ export {
     getOptions,
     getVotes,
     getVotesToken,
+    deployElectionPoll
 }
