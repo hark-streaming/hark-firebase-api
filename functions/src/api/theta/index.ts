@@ -9,6 +9,8 @@ import * as functions from "firebase-functions";
 const thetajs = require("./thetajs.cjs.js");
 import { BigNumber } from "bignumber.js";
 
+import { getElectionCount } from "./election";
+
 export let thetaRouter = express.Router();
 
 // GLOBAL FOR SCS/TESTNET/MAINNET
@@ -17,8 +19,8 @@ const chainId = thetajs.networks.ChainIds.Testnet; // TESTNET
 //const chainId = thetajs.networks.ChainIds.Mainnet; //MAINNET
 
 // Contract Bytecode/ABI Globals
-const ELECTION_ABI = require("./contracts/Final_GovernanceElection_ABI");
-const ELECTION_BYTECODE = require("./contracts/Final_GovernanceElection_Bytecode");
+const ELECTION_ABI = require("./contracts/GovernanceElection_ABI");
+const ELECTION_BYTECODE = require("./contracts/GovernanceElection_Bytecode");
 const GOVERNANCE_ABI = require("./contracts/Hark_Governance_Token_ABI");
 const GOVERNANCE_BYTECODE = require("./contracts/Hark_Governance_Token_Bytecode");
 //const PLATFORM_ABI = require("./contracts/Hark_Platform_Bytecode");
@@ -34,32 +36,6 @@ thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: expre
     const db = admin.firestore();
     const uid = req.params.uid;
     const tokenDoc = await db.collection("tokens").doc(uid).get();
-
-    // //const tokenDocAll = await db.collection("tokens").doc("all").get();
-    // //const tokenData = await tokenDocAll.data();
-    // const tokenData = {
-    //     "NETM": 500,
-    //     "TESE": 100,
-    //     "TESE1": 100,
-    //     "TESE2": 300,
-    //   }
-    // let tokenName = "YUCK";
-    // if (tokenData) {
-    //     const names = Object.keys(tokenData);
-    //     let sameNames = 0;
-    //     names.forEach((name, index) => {
-    //         if (name.slice(0, 4) == tokenName) {
-    //             sameNames++;
-    //         }
-    //     });
-
-    //     // append a number to the end of the name there was at least 1 match
-    //     if(sameNames > 0){
-    //         tokenName = tokenName + sameNames.toString();
-    //     }
-    //     console.log(tokenName);
-    // }
-
 
     if (tokenDoc.exists) {
         const tokenData = tokenDoc.data();
@@ -1088,16 +1064,16 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         // failed, send em back
         res.status(200).send(result);
     }
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const uid = decodedToken.uid;
 
     try {
         // get the firestore
         const db = admin.firestore();
 
         // get the uid from the id token
-        //const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-        //const uid = decodedToken.uid;
 
-        const uid = req.body.idToken; //FOR TESTING
+        //const uid = req.body.idToken; //FOR TESTING
 
         // check if we have an election contract deployed
         const userDoc = await db.collection("users").doc(uid).get();
@@ -1161,15 +1137,17 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         // log transaction
         if (transaction.hash) {
             // broadcast the transaction to the blockchain
-            await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+            //await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
 
-            // save our current time, that is when transaction was sent
-            let sentTimestamp = Date.now();
+            // now we read the contract to get the corresponding id
+            const electionId:number = await getElectionCount(electionAddress, chainId);
 
-            // write down the time we sent the transaction for the poll
+            // write down data
             await db.collection("polls").doc(uid).set({
-                0: {
-                    sentTimestamp: sentTimestamp
+                [pollId]: {
+                    timestamp: transaction.block.Timestamp,
+                    hash: transaction.hash,
+                    electionId: electionId - 1
                 }
             }, { merge: true });
 
@@ -1204,6 +1182,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
 
     /**
     * Function for a vault wallet to donate to a smart contract and receive governance tokens
+    * This one is not async since we need to get the blockchain id of the poll after transaction
     */
     async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
         // set up the provider (our partner key is on testnet)
@@ -1223,35 +1202,31 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
         let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
 
-        // create the data to send tfuel to the contract
-        // const ten18 = (new BigNumber(10)).pow(18); // 10^18, 1 Theta = 10^18 ThetaWei, 1 TFUEL = 10^18 TFuelWei    
-        // const amountWei = (new BigNumber(amount)).multipliedBy(ten18);
-        // const overrides = {
-        //     gasLimit: 100000, //override the default gasLimit
-        //     //value: amountWei // tfuelWei to send
-        // };
-
         // execute the smart contract transaction using the donor's vault wallet
         //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline, overrides);
         //console.log(estimatedGas);
-        // needs uint8 and uint256
-        //let transaction = await contract.createElection(pollOptionCount, pollDeadline);
-        let transaction = await contract.createElection(2, '1618975679');
+
+        let transaction = await contract.createElection(pollOptionCount, pollDeadline);
 
         console.log(transaction);
 
         // return the transaction data
         return transaction.result;
     };
+
 });
+
 
 /**
  * Cast a vote to a specific streamer's poll
  * {
  *   idToken: firebase id token of the voter
+ *   streamerUid:
+ *   pollId:
+ *   choice:
  * }
  */
-thetaRouter.post("/cast-vote/:streamerUid/:pollId/:choice", async function (req: express.Request, res: express.Response) {
+thetaRouter.post("/cast-vote", async function (req: express.Request, res: express.Response) {
     // check id token
     const result = await verifyIdToken(req.body.idToken);
     if (!result.success) {
@@ -1274,6 +1249,7 @@ thetaRouter.post("/cast-vote/:streamerUid/:pollId/:choice", async function (req:
         const streamerUid = req.params.streamerUid;
         const pollId = req.params.pollId;
         const choice = req.params.choice;
+
 
         // check if streamer exists
         const streamerDoc = await db.collection("users").doc(streamerUid).get();
