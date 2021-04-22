@@ -41,7 +41,7 @@ userRouter.get("/check-username/:username", async function (req: express.Request
  * Requires a valid hcaptcha token
  */
 userRouter.post("/register",
-    body("username").isLength({ min: 3 }).trim().escape(),
+    body("username").trim().isAlphanumeric().isLength({ min: 3 }),
     body("email").isEmail().normalizeEmail(),
     body("password").isLength({ min: 8 }),
     async function (req: express.Request, res: express.Response) {
