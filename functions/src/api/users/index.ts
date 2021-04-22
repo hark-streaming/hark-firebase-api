@@ -291,7 +291,7 @@ async function checkUsernameExists(username: string) {
     // checks each username. if
     if(!usernames) return false;
     for(let i = 0; i < usernames.length; i++) {
-        if(usernames[i].toLowerCase() == username) return true;
+        if(usernames[i].toLowerCase() == username.toLowerCase()) return true;
     }
 
     return false;
