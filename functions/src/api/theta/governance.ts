@@ -122,7 +122,7 @@ export async function editShares(contractAddress: string, uid: string, accessTok
 
     let transaction = await contract.editShares(payees, shares);
 
-    console.log(transaction);
+    //console.log(transaction);
 
     // return the transaction data
     return transaction.result;
@@ -130,24 +130,22 @@ export async function editShares(contractAddress: string, uid: string, accessTok
 
 /**
  * Send the appropriate share total tfuel to a payee
- * @param contractAddress 
- * @param uid 
- * @param accessToken 
- * @param payees 
- * @param shares 
  */
-export async function release(contractAddress: string, uid: string, accessToken: string, payeeAddress: string) {
-    const contract = makeGovWriteContract(contractAddress, uid, accessToken);
+export async function release(contractAddress: string, payeeAddress: string) {
+    // create a signer using our deployer wallet that has tfuel
+    const wallet = new thetajs.Wallet(functions.config().deploy_wallet.private_key);
 
-    //let estimatedGas = await contract.estimateGas.release(payeeAddress);
-    //console.log(estimatedGas);
+    // connect signer to correct network (specified as global)
+    const provider = new thetajs.providers.HttpProvider("testnet");
+    const connectedWallet = wallet.connect(provider);
+    let contract = new thetajs.Contract(contractAddress, GOVERNANCE_ABI, connectedWallet);
 
     let transaction = await contract.release(payeeAddress);
 
-    //console.log(transaction);
+    console.log(transaction);
 
     // return the transaction data
-    return transaction.result;
+    return transaction;
 }
 
 /**

@@ -11,7 +11,7 @@ import { BigNumber } from "bignumber.js";
 
 import { getElectionCount, electionHasEnded, deployElectionPoll, vote } from "./election";
 import { generateAccessToken, getVaultWallet, forceUpdateGetVaultWallet } from "./vaultwallet"
-import { editShares, shares, totalShares } from "./governance";
+import { editShares, shares, totalShares, release } from "./governance";
 
 export let thetaRouter = express.Router();
 
@@ -1311,175 +1311,6 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
  */
 thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: express.Response) {
     // check id token
-    // const result = await verifyIdToken(req.body.idToken);
-    // if (!result.success) {
-    //     // failed, send em back
-    //     res.status(200).send(result);
-    // }
-    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-    // const uid = decodedToken.uid;
-
-    const uid = req.body.testToken; // FOR TESTING W/O AUTH
-
-    try {
-        const db = admin.firestore();
-
-        // make sure streamer has a governance contract
-        const userDoc = await db.collection("users").doc(uid).get();
-        const userData = userDoc.data();
-        if (!userData?.governanceAddress) {
-            // no address, no election contract
-            res.status(200).send({
-                success: false,
-                status: 403,
-                message: "Missing election smart contract"
-            });
-            return;
-        }
-
-        // check if payee and share data okay
-        const newPayees = req.body.payees;
-        const percentShares = req.body.percentShares;
-        if (newPayees.length < 1 || newPayees.length > 5 ||
-            percentShares.length < 1 || percentShares.length > 5) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Invalid payee/share amount"
-            });
-            return;
-        }
-        if (newPayees.length != percentShares.length) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Payees must match shares"
-            });
-            return;
-        }
-        if (percentShares.reduce((a: number, b: number) => a + b) != 1.0) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Percents must sum to 1.0"
-            });
-            return;
-        }
-
-        // check if payee uids are valid, while getting vault addresses
-        // TODO: it should just break out of the loop 
-        //       as soon as it encounters an error, 
-        //       but i cant get it to work right now
-        let payeeAddresses: string[] = []
-        for (let i = 0; i < newPayees.length; i++) {
-            const uid = newPayees[i];
-            const userDoc = await db.collection("users").doc(uid).get();
-            if (userDoc.exists) {
-                const userData = await userDoc.data();
-                if (userData?.vaultWallet) {
-                    // payee data shouldn't misalign with percents
-                    payeeAddresses.push(userData?.vaultWallet);
-                }
-            }
-        }
-        // one of the payees was invalid
-        if (payeeAddresses.length < newPayees.length) {
-            console.log(payeeAddresses, newPayees)
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Payees contains invalid entry"
-            });
-            return;
-        }
-
-        // get share data
-        const governanceAddress = userData?.governanceAddress
-        const platformShares = await shares(governanceAddress, chainId, PLATFORM_ADDRESS);
-        const total = await totalShares(governanceAddress, chainId);
-        const workableShares = total - platformShares;
-
-        // calculate new share amounts
-        const newShares = percentShares.map((percent: number) => {
-            return Math.floor(percent * workableShares);
-        });
-
-        const sum = newShares.reduce((a: number, b: number) => a + b);
-
-        // Math.floor() should prevent sum > workableShares, but just in case...
-        if (sum > workableShares) {
-            res.status(200).send({
-                success: false,
-                status: 400,
-                message: "Calculation error!"
-            });
-            return;
-        }
-
-        // if sum is less than workableShares, allocate extra to first address
-        if (sum < workableShares) {
-            const diff = workableShares - sum;
-            newShares[0] += diff;
-        }
-        console.log(governanceAddress, uid, payeeAddresses, newShares);
-        // now send to contract
-        try {
-            console.log(governanceAddress, payeeAddresses, newShares);
-            const accessToken = generateAccessToken(uid);
-            const result = await editShares(governanceAddress, uid, accessToken, payeeAddresses, newShares);
-
-            if (result.hash) {
-
-                // write new share data into user
-                await db.collection("users").doc(uid).set({
-                    governanceShares: {
-                        payees: payeeAddresses,
-                        shares: newShares
-                    }
-                }, { merge: true });
-
-                res.status(200).send({
-                    success: true,
-                    status: 200,
-                    message: "Vote successful"
-                });
-                return;
-            }
-        }
-        catch {
-            res.status(200).send({
-                success: false,
-                status: 200,
-                message: "Governance contract failed"
-            });
-            return;
-        }
-
-
-        res.status(200).send({
-            success: true,
-            status: 200,
-            message: "Governance contract shares edited"
-        });
-        return;
-    }
-    catch (err) {
-        console.log(err)
-        res.status(200).send({
-            success: false,
-            status: 500,
-            message: "Something went wrong!"
-        });
-        return;
-    }
-
-});
-
-/**
- * Release tfuel to a payee that holds shares in the contract
- */
-thetaRouter.post("/release", async function (req: express.Request, res: express.Response) {
-    // check id token
     const result = await verifyIdToken(req.body.idToken);
     if (!result.success) {
         // failed, send em back
@@ -1610,7 +1441,7 @@ thetaRouter.post("/release", async function (req: express.Request, res: express.
                 res.status(200).send({
                     success: true,
                     status: 200,
-                    message: "Vote successful"
+                    message: "Governance contract shares edited"
                 });
                 return;
             }
@@ -1625,12 +1456,84 @@ thetaRouter.post("/release", async function (req: express.Request, res: express.
         }
 
 
+
+    }
+    catch (err) {
+        console.log(err)
         res.status(200).send({
-            success: true,
-            status: 200,
-            message: "Governance contract shares edited"
+            success: false,
+            status: 500,
+            message: "Something went wrong!"
         });
         return;
+    }
+
+});
+
+/**
+ * Release tfuel to a payee that holds shares in the streamer's contract
+ * Uses the deployer wallet to call
+ * {
+ *   streamerUid: uid of the streamer with gov contract
+ *   payeeUid: uid of the payee with a valid vault wallet
+ * }
+ */
+thetaRouter.post("/gov-release", async function (req: express.Request, res: express.Response) {
+    const streamerUid = req.body.streamerUid;
+    const payeeUid = req.body.payeeUid;
+    try {
+        const db = admin.firestore();
+
+        // make sure streamer has a governance contract
+        const streamerDoc = await db.collection("users").doc(streamerUid).get();
+        const streamerData = streamerDoc.data();
+        if (!streamerDoc.exists || !streamerData?.governanceAddress) {
+            // no address, no election contract
+            res.status(200).send({
+                success: false,
+                status: 403,
+                message: "Missing election smart contract"
+            });
+            return;
+        }
+
+        // get payee's address
+        const payeeDoc = await db.collection("users").doc(payeeUid).get();
+        if (!payeeDoc.exists) {
+            res.status(200).send({
+                success: false,
+                status: 403,
+                message: "Invalid payee"
+            });
+            return;
+        }
+        const payeeData = await payeeDoc.data();
+        const payeeAddress = payeeData?.vaultWallet;
+
+
+        // now send to contract
+        const governanceAddress = streamerData?.governanceAddress
+        try {
+            const result = await release(governanceAddress, payeeAddress);
+
+            if (result.hash) {
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: `Succesfully released share to ${governanceAddress}`
+                });
+                return;
+            }
+        }
+        catch {
+            res.status(200).send({
+                success: false,
+                status: 200,
+                message: "Governance contract failed"
+            });
+            return;
+        }
+
     }
     catch (err) {
         console.log(err)
