@@ -1432,6 +1432,7 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
                 // write new share data into user
                 await db.collection("users").doc(uid).set({
                     governanceShares: {
+                        payeeUids: newPayees,
                         payees: payeeAddresses,
                         shares: newShares
                     }
