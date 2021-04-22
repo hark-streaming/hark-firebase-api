@@ -276,9 +276,12 @@ async function checkUsernameExists(username: string) {
     }
     const infoData = infoDoc.data();
     const usernames = infoData?.usernames;
-
-    // if username exists, return true
-    if (usernames && usernames.indexOf(username) > -1) return true;
+    
+    // checks each username. if
+    if(!username) return false;
+    for(let i = 0; i < usernames.length; i++) {
+        if(usernames[i].toLowerCase() == username) return true;
+    }
 
     return false;
 }
@@ -290,7 +293,7 @@ async function createStreamDoc(username: string, uid: string, tags: string[]) {
     // the firestore
     const db = admin.firestore();
 
-    await db.collection("streams").doc(username).set({
+    await db.collection("streams").doc(username.toLowerCase()).set({
         title: username,
         description: "Default description!",
         timestamp: Date.now(),
