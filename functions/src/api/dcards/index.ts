@@ -17,7 +17,8 @@ dcardsRouter.get("/get/list", async (req: express.Request, res: express.Response
         let streamRef;
         try {
             // The reference to the live streams
-            streamRef = db.collection("dcards").limit(16);
+            streamRef = db.collection("dcards").where("title", "!=", "My Foundation").limit(16);
+            
         } catch (err) {
             // if error, return it
             return {
@@ -130,7 +131,7 @@ dcardsRouter.post("/make-template", async (req: express.Request, res: express.Re
 
         await db.collection("dcards").doc(uid).set({
             title: "My Foundation",
-            shortdesc: "A short summary",
+            shortdesc: "Learn More",
             longdesc: "A longer summary",
             mainimage: "",
             bgimage: "",
