@@ -8,7 +8,7 @@ import * as functions from "firebase-functions";
  * @param chainId thetajs.networks.ChainIds.[networkname]
  * @returns getElectionCount
  */
-async function getElectionCount(contractAddress: string, chainId: string) {
+export async function getElectionCount(contractAddress: string, chainId: string) {
     // set up a provider for reading
     const provider = new thetajs.providers.HttpProvider(chainId);
 
@@ -29,7 +29,7 @@ async function getElectionCount(contractAddress: string, chainId: string) {
  * @param electId 
  * @returns true or false
  */
-async function electionHasEnded(contractAddress: string, chainId: string, electId: number) {
+export async function electionHasEnded(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.electionHasEnded(electId);
@@ -42,7 +42,7 @@ async function electionHasEnded(contractAddress: string, chainId: string, electI
  * @param electId  
  * @returns 
  */
-async function elections(contractAddress: string, chainId: string, electId: number) {
+export async function elections(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.elections(electId);
@@ -55,7 +55,7 @@ async function elections(contractAddress: string, chainId: string, electId: numb
  * @param electId 
  * @returns 
  */
-async function getOptions(contractAddress: string, chainId: string, electId: number) {
+export async function getOptions(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.getOptions(electId);
@@ -68,7 +68,7 @@ async function getOptions(contractAddress: string, chainId: string, electId: num
  * @param electId 
  * @returns 
  */
-async function getVotes(contractAddress: string, chainId: string, electId: number) {
+export async function getVotes(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.getVotes(electId);
@@ -81,7 +81,7 @@ async function getVotes(contractAddress: string, chainId: string, electId: numbe
  * @param electId 
  * @returns 
  */
-async function getVotesToken(contractAddress: string, chainId: string, electId: number) {
+export async function getVotesToken(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.getVotesToken(electId);
@@ -94,7 +94,7 @@ async function getVotesToken(contractAddress: string, chainId: string, electId: 
  * @param electId 
  * @returns 
  */
-async function getElection(contractAddress: string, chainId: string, electId: number) {
+export async function getElection(contractAddress: string, chainId: string, electId: number) {
     const contract = makeReadContract(contractAddress, chainId);
 
     return await contract.getElection(electId);
@@ -106,7 +106,7 @@ async function getElection(contractAddress: string, chainId: string, electId: nu
  * @param chainId 
  * @returns 
  */
-function makeReadContract(contractAddress: string, chainId: string){
+function makeReadContract(contractAddress: string, chainId: string) {
     // set up a provider for reading
     const provider = new thetajs.providers.HttpProvider(chainId);
 
@@ -116,11 +116,11 @@ function makeReadContract(contractAddress: string, chainId: string){
     return contract;
 }
 
- /**
-    * Function for a vault wallet to donate to a smart contract and receive governance tokens
-    * This one is not async since we need to get the blockchain id of the poll after transaction
-    */
-  async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
+/**
+   * Function for a vault wallet to donate to a smart contract and receive governance tokens
+   * This one is not async since we need to get the blockchain id of the poll after transaction
+   */
+export async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
     // set up the provider (our partner key is on testnet)
     let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
     provider.setPartnerId(functions.config().theta.partner_id);
@@ -150,13 +150,54 @@ function makeReadContract(contractAddress: string, chainId: string){
     return transaction.result;
 };
 
-export {
-    getElectionCount,
-    electionHasEnded,
-    elections,
-    getElection,
-    getOptions,
-    getVotes,
-    getVotesToken,
-    deployElectionPoll
-}
+/**
+ * Vote in an election poll
+ * @param contractAddress 
+ * @param uid 
+ * @param accessToken 
+ * @param option 
+ * @param electId 
+ * @returns 
+ */
+export async function vote(contractAddress: string, uid: string, accessToken: string, option: number, electId: number) {
+    // set up the provider (our partner key is on testnet)
+    let provider = new thetajs.providers.PartnerVaultHttpProvider("testnet", null, "https://beta-api-wallet-service.thetatoken.org/theta");
+    provider.setPartnerId(functions.config().theta.partner_id);
+    provider.setUserId(uid);
+    provider.setAccessToken(accessToken);
+
+    // We will broadcast the transaction afterwards
+    //provider.setAsync(true);
+    //provider.setDryrun(true);
+
+    // wait for it to finish
+    provider.setAsync(false);
+    provider.setDryrun(false);
+
+    // set up the contract
+    let wallet = new thetajs.signers.PartnerVaultSigner(provider, uid);
+    let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
+
+    // execute the smart contract transaction using the donor's vault wallet
+    //let estimatedGas = await contract.estimateGas.vote(option, electId);
+    //console.log(estimatedGas);
+
+    let transaction = await contract.vote(option, electId);
+
+    console.log(transaction);
+
+    // return the transaction data
+    return transaction.result;
+};
+
+// export {
+//     getElectionCount,
+//     electionHasEnded,
+//     elections,
+//     getElection,
+//     getOptions,
+//     getVotes,
+//     getVotesToken,
+//     deployElectionPoll,
+//     vote,
+// }

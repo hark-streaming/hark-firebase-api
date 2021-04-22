@@ -1,6 +1,7 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
 import { firestore } from "firebase-admin";
+import { verifyIdToken } from "../../index";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).
@@ -16,7 +17,8 @@ dcardsRouter.get("/get/list", async (req: express.Request, res: express.Response
         let streamRef;
         try {
             // The reference to the live streams
-            streamRef = db.collection("dcards").limit(16);
+            streamRef = db.collection("dcards").where("title", "!=", "My Foundation").limit(16);
+            
         } catch (err) {
             // if error, return it
             return {
@@ -84,54 +86,72 @@ dcardsRouter.get("/:uid", async (req: express.Request, res: express.Response) =>
 });
 
 
-// add a new dcard
-// need to provide it with an auth token, just like jwtauth
-dcardsRouter.post("/add", async (req: express.Request, res: express.Response) => {
+/**
+ * Create a donation card template the user is able to update
+ * {
+ *   idToken: of the man who calls it
+ * }
+ */
+dcardsRouter.post("/make-template", async (req: express.Request, res: express.Response) => {
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
+
+    // get the uid from the id token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const uid = decodedToken.uid;
+
+    //const uid = req.body.idToken;
+
     // the firestore
     const db = admin.firestore();
 
-    let response;
-    let status;
+    // if they already have one send em back
+    const cardDoc = await db.collection("dcards").doc(uid).get();
+    if (cardDoc.exists) {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "User already has donation card"
+        });
+    }
+
+    // make the template in the firestore so user can update on frontend
     try {
-        // check user authorization
-        const idToken = req.body.idToken;
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        let userId = decodedToken.uid;
+        const userDoc = await db.collection("users").doc(uid).get();
+        const userData = await userDoc.data();
+        const tokenName = userData?.tokenName;
+        const username = userData?.username;
 
-        // let userId = req.body.idToken; //  was for testing
+        const streamerDoc = await db.collection("streams").doc(username).get();
+        const streamerData = await streamerDoc.data();
+        const tags = streamerData?.tags;
 
-        // all the attributes the req should provide
-        const title = req.body.title;
-        const shortdesc = req.body.shortdesc;
-        const longdesc = req.body.longdesc;
-        const mainimage = req.body.mainimage;
-        const bgimage = req.body.bgimage;
-        const link = req.body.link;
-
-        // add a new dcard to the collection
-        // use the uid as the document title
-        await db.collection("dcards").doc(userId).set({
-            title: title,
-            shortdesc: shortdesc,
-            longdesc: longdesc,
-            mainimage: mainimage,
-            bgimage: bgimage,
-            link: link,
+        await db.collection("dcards").doc(uid).set({
+            title: "My Foundation",
+            shortdesc: "Learn More",
+            longdesc: "A longer summary",
+            mainimage: "",
+            bgimage: "",
+            link: "https://example.com",
+            owner: uid,
+            tags: (tags ? tags : [""]),
+            tokenName: (tokenName ? tokenName : ""),
         });
 
-        response = {
+        res.status(200).send({
             success: true,
-            message: "donation card added!",
-        }
-        status = 200;
+            status: 200,
+            message: "Card successfully made"
+        });
     }
-    catch (err) {
-        response = {
+    catch {
+        res.status(200).send({
             success: false,
-            error: err,
-        }
-        status = 500;
+            status: 400,
+            message: "Error writing donation card"
+        });
     }
-
-    res.status(status).json(response);
 });
