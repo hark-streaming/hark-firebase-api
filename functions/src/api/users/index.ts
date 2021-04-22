@@ -15,7 +15,8 @@ export let userRouter = express.Router();
  * Check if a username is unique or not
  */
 userRouter.get("/check-username/:username", async function (req: express.Request, res: express.Response) {
-    const exists = await checkUsernameExists(req.body.username);
+    const exists = await checkUsernameExists(req.params.username);
+    console.log(exists)
     if (exists) {
         res.status(200).send({
             success: true,
@@ -287,14 +288,13 @@ async function checkUsernameExists(username: string) {
     }
     const infoData = infoDoc.data();
     const usernames = infoData?.usernames;
-    
-    // checks each username. if
-    if(!usernames) return false;
-    for(let i = 0; i < usernames.length; i++) {
-        if(usernames[i].toLowerCase() == username.toLowerCase()) return true;
-    }
 
-    return false;
+    let filter = usernames.filter((n: string) => n.toLowerCase() == username.toLowerCase());
+    if (filter.length > 0){
+        return true;
+    } else {
+        return false;
+    }
 }
 
 /**
