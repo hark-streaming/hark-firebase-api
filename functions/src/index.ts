@@ -121,6 +121,27 @@ app.get("*", async (req: express.Request, res: express.Response) => {
 
 exports.api = functions.https.onRequest(app);
 
+/**
+* Helper function to verify a firebase idtoken
+*/
+export async function verifyIdToken(idToken: string) {
+   try {
+       await admin.auth().verifyIdToken(idToken);
+       return {
+           success: true,
+           status: 200,
+       };
+   }
+   catch (err) {
+       return {
+           success: false, // MAKE SURE ENABLED ON PROD
+           //success: true, // DISABLE AUTH FOR TESTING
+           status: 401,
+           message: "Invalid id token"
+       };
+   }
+}
+
 // to make tag data
 /*
 app.get("/dingle", async(req: express.Request, res: express.Response) => {

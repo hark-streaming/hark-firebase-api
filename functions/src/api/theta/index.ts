@@ -1208,7 +1208,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
         // check if we have poll data
         const pollDoc = await db.collection("polls").doc(streamerUid).get();
         const pollData = pollDoc.data();
-        if (!pollData?.[pollId]) {
+        if (!pollData?.polls?.[pollId]) {
             // poll with that id doesn't exist
             res.status(200).send({
                 success: false,
@@ -1218,7 +1218,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             return;
         }
         // check if the choice exists in the poll
-        else if (!pollData?.[pollId]?.answers?.[choice]) {
+        else if (!pollData?.polls?.[pollId]?.answers?.[choice]) {
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -1229,7 +1229,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
 
         // check contract to see if poll is expired
         const electionAddress = userData?.electionAddress;
-        const electionId = pollData?.[pollId]?.electionId;
+        const electionId = pollData?.polls?.[pollId]?.electionId;
         const hasEnded = await electionHasEnded(electionAddress, chainId, electionId);
         if (hasEnded) {
             res.status(200).send({
@@ -1246,17 +1246,16 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             const result = await vote(electionAddress, voterUid, accessToken, choice, electionId);
 
             if (result.hash) {
+                // increment locally (i think this works?)
+                const polls = pollData?.polls;
+                const localpolls: any = [];
+                polls.forEach((x: any) => localpolls.push(x));
+                localpolls[pollId].answers[choice-1].value++;
+
                 // write our voting data into poll
-                // TODO: increment vote
-                // await db.collection("polls").doc(streamerUid).set({
-                //     [pollId]: {
-                //         answers: [{
-                //            [choice]: {
-                //                value: admin.firestore.FieldValue.increment(1)
-                //            }
-                //         }]
-                //     }
-                // }, { merge: true });
+                await db.collection("polls").doc(streamerUid).update(
+                    polls
+                );
 
                 // write voting data into user
                 await db.collection("votes").doc(voterUid).set({
