@@ -104,6 +104,7 @@ export async function shares(contractAddress: string, chainId: string, address: 
 
 /**
  * Edit the share distribution of the contract
+ * NEEDS 10 TFUEL MINIMUM IN WALLET
  * @param contractAddress 
  * @param uid 
  * @param accessToken 
@@ -115,10 +116,13 @@ export async function editShares(contractAddress: string, uid: string, accessTok
 
     //let estimatedGas = await contract.estimateGas.editShares(payees, shares);
     //console.log(estimatedGas);
+    // const overrides = {
+    //     gasLimit: 10000000, //override the default gasLimit
+    // };
 
     let transaction = await contract.editShares(payees, shares);
 
-    //console.log(transaction);
+    console.log(transaction);
 
     // return the transaction data
     return transaction.result;

@@ -42,6 +42,7 @@ var corsOptions = {
 app.use(cors(corsOptions));
 
 // firebase idToken middleware
+/* Temporarily disabled
 app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.body.idToken) {
         try {
@@ -64,6 +65,7 @@ app.use(async (req: express.Request, res: express.Response, next: express.NextFu
         next();
     }
 })
+*/
 
 // Any requests to /api/users will be routed to the user router!
 app.use("/users", usersApi.userRouter);
