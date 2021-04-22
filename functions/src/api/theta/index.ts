@@ -1486,7 +1486,7 @@ thetaRouter.post("/gov-release", async function (req: express.Request, res: expr
 
         // make sure streamer has a governance contract
         const streamerDoc = await db.collection("users").doc(streamerUid).get();
-        const streamerData = streamerDoc.data();
+        const streamerData = streamerDoc.data(); // todo: might throw errors here if streamer no exist
         if (!streamerDoc.exists || !streamerData?.governanceAddress) {
             // no address, no election contract
             res.status(200).send({
