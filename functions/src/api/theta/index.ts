@@ -11,7 +11,7 @@ import { BigNumber } from "bignumber.js";
 
 import { getElectionCount, electionHasEnded, deployElectionPoll, vote } from "./election";
 import { generateAccessToken, getVaultWallet, forceUpdateGetVaultWallet } from "./vaultwallet"
-import { editShares, shares, totalShares, release } from "./governance";
+import { editShares, shares, totalShares, release, totalSupply, totalReleased } from "./governance";
 
 export let thetaRouter = express.Router();
 
@@ -56,6 +56,69 @@ thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: expre
         });
         return;
     }
+});
+
+/**
+ * Retrieves a bunch of general governance contract data
+ */
+thetaRouter.get("/gov-contract/:uid", async function (req: express.Request, res: express.Response) {
+    const db = admin.firestore();
+    const uid = req.params.uid;
+
+    // check if streamer has a gov contract
+    const userDoc = await db.collection("users").doc(uid).get();
+    if(!userDoc.exists){
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Streamer does not exist"
+        });
+        return;
+    }
+    const userData = await userDoc.data();
+    const governanceAddress = userData?.governanceAddress;
+    if(!governanceAddress){
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Streamer has no governance contract"
+        });
+        return;
+    }
+
+    // grab stats for gov contract
+    const govTotalSupply = await totalSupply(governanceAddress, chainId);
+    const owner = userData?.vaultWallet;
+    const symbol = userData?.tokenName;
+
+    const tokenDoc = await db.collection("tokens").doc("all").get();
+    const tokenData = await tokenDoc.data();
+    const holders = tokenData?.[symbol];
+
+    const payees = userData?.governanceShares.payees;
+    //payees.push(PLATFORM_ADDRESS);
+    const shares = userData?.governanceShares.shares;
+    //shares.push(100);
+
+    let tfuelWeiReleased = await totalReleased(governanceAddress, chainId);
+    tfuelWeiReleased = new BigNumber(tfuelWeiReleased._hex);
+    const tfuelReleased = tfuelWeiReleased / 10**18;
+
+    res.status(200).send({
+        success: true,
+        status: 200,
+        data: {
+            address: governanceAddress,
+            owner: owner,
+            symbol: symbol + "-HARK",
+            holders: holders,
+            totalSupply: govTotalSupply,
+            payees: payees,
+            shares: shares,
+            tfuelReleased: tfuelReleased,
+        }
+    });
+    return;
 });
 
 /**
@@ -1571,6 +1634,9 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
             const result = await editShares(governanceAddress, uid, accessToken, payeeAddresses, newShares);
 
             if (result.hash) {
+                // add the platform into the share data
+                newPayees.push(PLATFORM_ADDRESS);
+                newShares.push(100);
 
                 // write new share data into user
                 await db.collection("users").doc(uid).set({
