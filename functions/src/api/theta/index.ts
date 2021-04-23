@@ -545,9 +545,10 @@ async function broadcastRawTransaction(senderUid: String, senderAccessToken: Str
 /**
  * Deploys governance smart contract (token contract) for a streamer
  * Requires an admin key to run, as well as the streamer's request to be in the database
- * 
+ * TEMPORARY: uses a firebase auth token
  * {
- *   auth: "myharkadminkey"
+ *   OLD auth: "myharkadminkey"
+ *   idToken: firebase auth token
  * }
  * 
  * Use this wallet privatekey for testing (has some scs tfuel)
@@ -566,15 +567,25 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
     // general validation before deploying
     try {
         // check admin auth key
-        const authkey = req.headers.auth;
-        if (authkey != functions.config().hark_admin.key) {
-            res.status(200).send({
-                success: false,
-                status: 401,
-                message: "unauthorized",
-            });
-            return;
+        // const authkey = req.headers.auth;
+        // if (authkey != functions.config().hark_admin.key) {
+        //     res.status(200).send({
+        //         success: false,
+        //         status: 401,
+        //         message: "unauthorized",
+        //     });
+        //     return;
+        // }
+
+        // check id token
+        const result = await verifyIdToken(req.body.idToken);
+        if (!result.success) {
+            // failed, send em back
+            res.status(200).send(result);
         }
+        // get the uid from the id token
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        const uid = decodedToken.uid;
 
         // check that streamer doesn't already have a governance contract
         const userDoc = await db.collection("users").doc(uid).get();
@@ -624,7 +635,14 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
 
         // check if a token with that name already exists
         // if it exists, we append a number
+
         const tokenDocAll = await db.collection("tokens").doc("all").get();
+        if (!tokenDocAll.exists) {
+            await db.collection("tokens").doc("all").set({
+
+            });
+        }
+
         const tokenData = await tokenDocAll.data();
         if (tokenData) {
             const names = Object.keys(tokenData);
@@ -708,6 +726,13 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
                 }
             }, { merge: true });
 
+            // add to token doc
+            await db.collection("tokens").doc("all").set({
+                [tokenName]: {
+
+                }
+            }, { merge: true });
+
             // Log the completion of the request with the current date
             await db.collection("requests").doc(uid).update({
                 governance: Date.now()
@@ -746,6 +771,7 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
  * Requires an existing request for election contract, and an existing governance contract 
  * headers: {
  *   auth: "myharkadminkey"
+ *   TEMP - idToken
  * }
  */
 thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: express.Request, res: express.Response) {
@@ -758,15 +784,26 @@ thetaRouter.post("/deploy-election-contract/:streameruid", async function (req: 
     // general validation before deploying
     try {
         // check admin auth key
-        const authkey = req.headers.auth;
-        if (authkey != functions.config().hark_admin.key) {
-            res.status(200).send({
-                success: false,
-                status: 401,
-                message: "unauthorized",
-            });
-            return;
+        // const authkey = req.headers.auth;
+        // if (authkey != functions.config().hark_admin.key) {
+        //     res.status(200).send({
+        //         success: false,
+        //         status: 401,
+        //         message: "unauthorized",
+        //     });
+        //     return;
+        // }
+
+        // check id token
+        const result = await verifyIdToken(req.body.idToken);
+        if (!result.success) {
+            // failed, send em back
+            res.status(200).send(result);
         }
+        // get the uid from the id token
+        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+        const uid = decodedToken.uid;
+
 
         // check that streamer doesn't already have an election contract
         const userDoc = await db.collection("users").doc(uid).get();
@@ -1004,14 +1041,13 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
         // failed, send em back
         res.status(200).send(result);
     }
+    // get the uid from the id token
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    const uid = decodedToken.uid;
 
     try {
         // get the firestore
         const db = admin.firestore();
-
-        // get the uid from the id token
-        const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-        const uid = decodedToken.uid;
 
         //const uid = req.body.idToken; //FOR TESTING
 
