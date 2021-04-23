@@ -17,9 +17,12 @@ example setting environment variable
 `firebase --project=development functions:config:set someservice.key="THE API KEY" someservice.id="THE CLIENT ID"`
 
 
-## Deploying
+# Deploying
 First you have to run `firebase login` to log in to your hark email. If you don't have access 
 and think you should, contact kevin.xu@hark.tv.  
 
 After logging in, run `npm run deploy:dev` to deploy the code to the live dev server.  
 You can run `npm run deploy:prod` to deploy the code to the live production server.  
+
+# Additional Notes
+The codebase is currently a little messy, mainly due to the last-minute hackathon crunch.
