@@ -59,6 +59,40 @@ thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: expre
 });
 
 /**
+ * Retrieves data of last 16 tfuel donations
+ * (maybe add auth token here if donations should not be public info)
+ * (granted, it is literally written on the blockchain so...)
+ */
+thetaRouter.get("/recent-donations/:uid", async function (req: express.Request, res: express.Response) {
+    const db = admin.firestore();
+    const uid = req.params.uid;
+    const transactionsDoc = await db.collection("transactions").doc(uid).get();
+
+    if (transactionsDoc.exists) {
+        const transactionsData = transactionsDoc.data();
+
+        if (transactionsData) {
+            // filter data
+        }
+
+        res.status(200).send({
+            success: true,
+            status: 200,
+            tokens: transactionsData
+        });
+        return;
+    }
+    else {
+        res.status(200).send({
+            success: false,
+            status: 400,
+            message: "Transaction data of user does not exist!"
+        });
+        return;
+    }
+});
+
+/**
  * Retrieves the wallet address and balances of a user.
  * Add ?force_update=true to force an update
  */
@@ -316,6 +350,21 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
             // donate good
             if (transfer.data.status == "success") {
+                // save our current time, that is when transaction was sent
+                let sentTimestamp = Date.now();
+
+                // write down the transaction
+                await db.collection("transactions").doc(uid).set({
+                    [sentTimestamp]: {
+                        transactionSent: sentTimestamp,
+                        hash: "",
+                        tfuelPaid: amount,
+                        tokensBought: 0,
+                        recipient: streameruid,
+                        sender: uid,
+                    }
+                }, { merge: true });
+
                 res.status(200).send({
                     success: true,
                     status: 200,
@@ -326,7 +375,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 
             res.status(200).send({
                 success: true,
-                status: 200,
+                status: 500,
                 message: "Vault wallet donate error"
             });
             return;
@@ -1021,6 +1070,7 @@ thetaRouter.post("/request-governance-contract", async function (req: express.Re
  *   idToken: "firebase id token"
  *   pollId: id of the poll of the streamer (1,2,...)
  * }
+ * TODO: CHANGE THE FIREBASE POLL DATA TO BE BETTER
  */
 thetaRouter.post("/deploy-election-poll", async function (req: express.Request, res: express.Response) {
     // check id token
@@ -1057,7 +1107,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
         const pollId = req.body.pollId;
         const pollDoc = await db.collection("polls").doc(uid).get();
         const pollData = pollDoc.data();
-        if (!pollData?.[pollId]) {
+        if (!pollData?.polls[pollId]) {
             // poll with that id doesn't exist
             res.status(200).send({
                 success: false,
@@ -1066,9 +1116,18 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             });
             return;
         }
+        if (!pollData?.polls[pollId].deadline || pollData?.polls[pollId].deadline < Date.now() / 1000) {
+            // poll has no deadline or is expired
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Invalid deadline"
+            });
+            return;
+        }
 
         // get streamer's vault wallet
-        const vaultWallet = await getVaultWallet(uid);
+        const vaultWallet = await forceUpdateGetVaultWallet(uid);
         if (vaultWallet?.status != "success") {
             res.status(200).send({
                 success: false,
@@ -1078,55 +1137,68 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             return;
         }
 
-        // if streamer has < 1 tfuel, no polls
-        if (vaultWallet.body.balance < 1) {
+        // if streamer has < 10 tfuel, no polls
+        // subject to change in future
+        if (parseInt(vaultWallet.body.balance) < 10) {
             res.status(200).send({
                 success: false,
                 status: 400,
-                message: "Streamer must have more than 1 tfuel to make polls"
+                message: "Streamer must have more than 10 tfuel to make polls"
             });
             return;
         }
 
         // data for election contract write
         const electionAddress = userData?.electionAddress;
-        const pollOptionCount = parseInt(pollData?.[pollId].answers.length);
-        const pollDeadline = parseInt(pollData?.[pollId].deadline);
-
+        const pollOptionCount: number = parseInt(pollData?.polls[pollId].answers.length);
+        const pollDeadline: number = parseInt(pollData?.polls[pollId].deadline);
         // generate a vault access token
         let accessToken = generateAccessToken(uid);
 
+        console.log(electionAddress, uid, pollOptionCount, pollDeadline);
+
         // call the contract to make the poll...
-        let transaction = await deployElectionPoll(electionAddress, uid, accessToken, pollOptionCount, pollDeadline);
+        try {
+            let transaction = await deployElectionPoll(electionAddress, uid, accessToken, pollOptionCount, pollDeadline);
+            // log transaction
+            if (transaction.hash) {
+                // broadcast the transaction to the blockchain
+                //await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
 
-        // log transaction
-        if (transaction.hash) {
-            // broadcast the transaction to the blockchain
-            //await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+                // now we read the contract to get the corresponding id
+                const electionId: number = await getElectionCount(electionAddress, chainId);
 
-            // now we read the contract to get the corresponding id
-            const electionId: number = await getElectionCount(electionAddress, chainId);
-
-            // write down data
-            await db.collection("polls").doc(uid).set({
-                [pollId]: {
+                // write down data
+                // please change the poll data structure later
+                const localpolls = pollData?.polls;
+                let polls: any = [];
+                localpolls.forEach((x: any) => polls.push(x));
+                const blockData = {
                     timestamp: transaction.block.Timestamp,
                     hash: transaction.hash,
                     electionId: electionId - 1
-                }
-            }, { merge: true });
+                };
+                polls[pollId] = {
+                    ...polls[pollId],
+                    ...blockData
+                };
 
-            // now we're done with the poll deployment
-            res.status(200).send({
-                success: true,
-                status: 200,
-                message: "Poll deployed"
-            });
-            return;
+                await db.collection("polls").doc(uid).set({
+                    polls
+                });
 
+                // now we're done with the poll deployment
+                res.status(200).send({
+                    success: true,
+                    status: 200,
+                    message: "Poll deployed"
+                });
+                return;
+
+            }
         }
-        else {
-            // transaction failed
+        catch (err) {
+            console.log(err)
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -1134,6 +1206,9 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             });
             return;
         }
+
+
+
 
     }
     catch (err) {
@@ -1159,25 +1234,45 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
  */
 thetaRouter.post("/cast-vote", async function (req: express.Request, res: express.Response) {
     // check id token
-    const result = await verifyIdToken(req.body.idToken);
-    if (!result.success) {
-        // failed, send em back
-        res.status(200).send(result);
-    }
-    // get the uid from the id token
-    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
-    const voterUid = decodedToken.uid;
+    // const result = await verifyIdToken(req.body.idToken);
+    // if (!result.success) {
+    //     // failed, send em back
+    //     res.status(200).send(result);
+    // }
+    // // get the uid from the id token
+    // const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+    // const voterUid = decodedToken.uid;
 
     try {
         // get the firestore
         const db = admin.firestore();
 
-        //const voterUid = req.body.idToken; //FOR TESTING
+        const voterUid = req.body.idToken; //FOR TESTING
 
         // data for the poll
         const streamerUid = req.body.streamerUid;
         const pollId = req.body.pollId;
         const choice = req.body.choice;
+
+        // if voter has < 10 tfuel, vote
+        // subject to change in future
+        const vaultWallet = await forceUpdateGetVaultWallet(voterUid);
+        if (vaultWallet?.status != "success") {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Error retrieving vault wallet"
+            });
+            return;
+        }
+        if (parseInt(vaultWallet.body.balance) < 10) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Must have more than 10 tfuel to vote"
+            });
+            return;
+        }
 
 
         // check if streamer exists
@@ -1218,7 +1313,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             return;
         }
         // check if the choice exists in the poll
-        else if (!pollData?.polls?.[pollId]?.answers?.[choice]) {
+        else if (!pollData?.polls[pollId]?.answers?.[choice]) {
             res.status(200).send({
                 success: false,
                 status: 500,
@@ -1229,7 +1324,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
 
         // check contract to see if poll is expired
         const electionAddress = userData?.electionAddress;
-        const electionId = pollData?.polls?.[pollId]?.electionId;
+        const electionId = pollData?.polls[pollId]?.electionId;
         const hasEnded = await electionHasEnded(electionAddress, chainId, electionId);
         if (hasEnded) {
             res.status(200).send({
@@ -1240,22 +1335,25 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
             return;
         }
 
+        // check here if user already voted
+
         // finally, vote
         try {
             const accessToken = generateAccessToken(voterUid);
             const result = await vote(electionAddress, voterUid, accessToken, choice, electionId);
 
             if (result.hash) {
-                // increment locally (i think this works?)
-                const polls = pollData?.polls;
-                const localpolls: any = [];
-                polls.forEach((x: any) => localpolls.push(x));
-                localpolls[pollId].answers[choice-1].value++;
+                // increment locally
+                // please change the poll data structure later
+                const localpolls = pollData?.polls;
+                let polls: any = [];
+                localpolls.forEach((x: any) => polls.push(x));
+                localpolls[pollId].answers[choice - 1].votes += 1;
 
                 // write our voting data into poll
-                await db.collection("polls").doc(streamerUid).update(
+                await db.collection("polls").doc(streamerUid).set({
                     polls
-                );
+                });
 
                 // write voting data into user
                 await db.collection("votes").doc(voterUid).set({

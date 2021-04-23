@@ -119,6 +119,7 @@ function makeReadContract(contractAddress: string, chainId: string) {
 /**
    * Function for a vault wallet to donate to a smart contract and receive governance tokens
    * This one is not async since we need to get the blockchain id of the poll after transaction
+   * NEEDS 10 TFUEL IN WALLET
    */
 export async function deployElectionPoll(contractAddress: string, uid: string, accessToken: string, pollOptionCount: number, pollDeadline: number) {
     // set up the provider (our partner key is on testnet)
@@ -139,12 +140,10 @@ export async function deployElectionPoll(contractAddress: string, uid: string, a
     let contract = new thetajs.Contract(contractAddress, ELECTION_ABI, wallet);
 
     // execute the smart contract transaction using the donor's vault wallet
-    //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline, overrides);
+    //let estimatedGas = await contract.estimateGas.createElection(pollOptionCount, pollDeadline);
     //console.log(estimatedGas);
 
     let transaction = await contract.createElection(pollOptionCount, pollDeadline);
-
-    //console.log(transaction);
 
     // return the transaction data
     return transaction.result;
@@ -152,6 +151,7 @@ export async function deployElectionPoll(contractAddress: string, uid: string, a
 
 /**
  * Vote in an election poll
+ * NEEDS 10 TFUEL MINIMUM
  * @param contractAddress 
  * @param uid 
  * @param accessToken 
