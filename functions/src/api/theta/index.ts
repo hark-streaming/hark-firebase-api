@@ -52,7 +52,7 @@ thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: expre
         res.status(200).send({
             success: false,
             status: 400,
-            message: "User does not exist!"
+            message: "Token data of user does not exist!"
         });
         return;
     }
