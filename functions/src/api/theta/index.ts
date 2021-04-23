@@ -67,7 +67,7 @@ thetaRouter.get("/gov-contract/:uid", async function (req: express.Request, res:
 
     // check if streamer has a gov contract
     const userDoc = await db.collection("users").doc(uid).get();
-    if(!userDoc.exists){
+    if (!userDoc.exists) {
         res.status(200).send({
             success: false,
             status: 400,
@@ -77,7 +77,7 @@ thetaRouter.get("/gov-contract/:uid", async function (req: express.Request, res:
     }
     const userData = await userDoc.data();
     const governanceAddress = userData?.governanceAddress;
-    if(!governanceAddress){
+    if (!governanceAddress) {
         res.status(200).send({
             success: false,
             status: 400,
@@ -102,7 +102,7 @@ thetaRouter.get("/gov-contract/:uid", async function (req: express.Request, res:
 
     let tfuelWeiReleased = await totalReleased(governanceAddress, chainId);
     tfuelWeiReleased = new BigNumber(tfuelWeiReleased._hex);
-    const tfuelReleased = tfuelWeiReleased / 10**18;
+    const tfuelReleased = tfuelWeiReleased / 10 ** 18;
 
     res.status(200).send({
         success: true,
@@ -1507,6 +1507,7 @@ thetaRouter.post("/cast-vote", async function (req: express.Request, res: expres
 /**
  * Edit the share distribution of the governance contract
  * The default payees are the platform contract and the streamer's vault wallet
+ * NEEDS >10 TFUEL IN WALLET
  * {
  *   idToken: firebase id token of the streamer
  *   payees: [ uid1, uid2, uid3 ] // array of uids
@@ -1523,7 +1524,7 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
     const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
     const uid = decodedToken.uid;
 
-    //const uid = req.body.testToken; // FOR TESTING W/O AUTH
+    //const uid = req.body.idToken; // FOR TESTING W/O AUTH
 
     try {
         const db = admin.firestore();
@@ -1540,6 +1541,27 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
             });
             return;
         }
+
+        // make sure streamer has >10 tfuel
+        // subject to change in future
+        const vaultWallet = await forceUpdateGetVaultWallet(uid);
+        if (vaultWallet?.status != "success") {
+            res.status(200).send({
+                success: false,
+                status: 500,
+                message: "Error retrieving vault wallet"
+            });
+            return;
+        }
+        if (parseInt(vaultWallet.body.balance) < 10) {
+            res.status(200).send({
+                success: false,
+                status: 400,
+                message: "Must hold more than 10 tfuel to edit shares"
+            });
+            return;
+        }
+
 
         // check if payee and share data okay
         const newPayees = req.body.payees;
@@ -1654,11 +1676,12 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
                 return;
             }
         }
-        catch {
+        catch (err) {
             res.status(200).send({
                 success: false,
                 status: 200,
-                message: "Governance contract failed"
+                message: "Governance contract failed",
+                err: err
             });
             return;
         }
@@ -1682,13 +1705,22 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
  * Release tfuel to a payee that holds shares in the streamer's contract
  * Uses the deployer wallet to call
  * {
- *   streamerUid: uid of the streamer with gov contract
- *   payeeUid: uid of the payee with a valid vault wallet
+ *   idToken: id token uid of the streamer with gov contract
+ *   payeeAddresses: [addresses of payees]
  * }
  */
 thetaRouter.post("/gov-release", async function (req: express.Request, res: express.Response) {
-    const streamerUid = req.body.streamerUid;
-    const payeeUid = req.body.payeeUid;
+    // check id token
+    const result = await verifyIdToken(req.body.idToken);
+    if (!result.success) {
+        // failed, send em back
+        res.status(200).send(result);
+    }
+    const decodedToken = await admin.auth().verifyIdToken(req.body.idToken);
+
+    const streamerUid = decodedToken.uid;
+    //const streamerUid = req.body.idToken;
+    //const payeeUids = req.body.payeeUids;
     try {
         const db = admin.firestore();
 
@@ -1696,42 +1728,39 @@ thetaRouter.post("/gov-release", async function (req: express.Request, res: expr
         const streamerDoc = await db.collection("users").doc(streamerUid).get();
         const streamerData = streamerDoc.data(); // todo: might throw errors here if streamer no exist
         if (!streamerDoc.exists || !streamerData?.governanceAddress) {
-            // no address, no election contract
+            // no address, no gov contract
             res.status(200).send({
                 success: false,
                 status: 403,
-                message: "Missing election smart contract"
+                message: "Missing governance smart contract"
             });
             return;
         }
 
-        // get payee's address
-        const payeeDoc = await db.collection("users").doc(payeeUid).get();
-        if (!payeeDoc.exists) {
-            res.status(200).send({
-                success: false,
-                status: 403,
-                message: "Invalid payee"
-            });
-            return;
-        }
-        const payeeData = await payeeDoc.data();
-        const payeeAddress = payeeData?.vaultWallet;
+        let payeeAddresses: string[] = req.body.payeeAddresses;
 
 
         // now send to contract
         const governanceAddress = streamerData?.governanceAddress
         try {
-            const result = await release(governanceAddress, payeeAddress);
+            // don't await for this one, we may call release many times
+            payeeAddresses.forEach((address) => {
+                release(governanceAddress, address);
+            })
+            // release to platform contract
+            //release(governanceAddress, PLATFORM_ADDRESS);
 
-            if (result.hash) {
-                res.status(200).send({
-                    success: true,
-                    status: 200,
-                    message: `Succesfully released share to ${governanceAddress}`
-                });
-                return;
-            }
+            //const result = await release(governanceAddress, payeeAddress);
+
+            //if (result.hash) {
+            res.status(200).send({
+                success: true,
+                status: 200,
+                message: `Succesfully released shares`,
+                payeeAddresses: payeeAddresses
+            });
+            return;
+            //}
         }
         catch {
             res.status(200).send({
