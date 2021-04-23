@@ -451,8 +451,6 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             return;
         }
 
-
-
         // generate a vault access token
         let accessToken = generateAccessToken(uid);
 
@@ -461,7 +459,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         // log transaction
         if (transaction.hash) {
             // broadcast the transaction to the blockchain
-            await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
+            //await broadcastRawTransaction(uid, accessToken, transaction.tx_bytes);
             //console.log(broadcasted);
 
             // save our current time, that is when transaction was sent
@@ -522,7 +520,8 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         res.status(200).send({
             success: false,
             status: 500,
-            message: "Something went wrong!"
+            message: "Something went wrong!",
+            err: err
         });
         return;
     }
@@ -538,12 +537,12 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
         provider.setAccessToken(accessToken);
 
         // We will broadcast the transaction afterwards
-        provider.setAsync(true);
-        provider.setDryrun(true);
+        //provider.setAsync(true);
+        //provider.setDryrun(true);
 
         // Wait for transaction to finish
-        //provider.setAsync(false);
-        //provider.setDryrun(false);
+        provider.setAsync(false);
+        provider.setDryrun(false);
 
         //console.log(provider);
 
@@ -575,35 +574,35 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
 /**
  * Helper function to broadcast a raw smart contract transaction to the blockchain
  */
-async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
-    let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
-    let params = {
-        "partner_id": functions.config().theta.partner_id,
-        "tx_bytes": txBytes
-    };
-    let headers = {
-        "x-access-token": senderAccessToken
-    };
-    let body = {
-        "jsonrpc": "2.0",
-        "method": "theta.BroadcastRawTransactionAsync",
-        "params": params,
-        "id": senderUid // not sure what this does, but can be anything
-    };
+// async function broadcastRawTransaction(senderUid: String, senderAccessToken: String, txBytes: String) {
+//     let uri = "https://beta-api-wallet-service.thetatoken.org/theta";
+//     let params = {
+//         "partner_id": functions.config().theta.partner_id,
+//         "tx_bytes": txBytes
+//     };
+//     let headers = {
+//         "x-access-token": senderAccessToken
+//     };
+//     let body = {
+//         "jsonrpc": "2.0",
+//         "method": "theta.BroadcastRawTransactionAsync",
+//         "params": params,
+//         "id": senderUid // not sure what this does, but can be anything
+//     };
 
-    let rp = require("request-promise");
+//     let rp = require("request-promise");
 
-    let response = await rp({
-        method: 'POST',
-        uri: uri,
-        body: body,
-        json: true,
-        headers: headers,
-        insecure: true,
-        rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
-    });
-    return response;
-}
+//     let response = await rp({
+//         method: 'POST',
+//         uri: uri,
+//         body: body,
+//         json: true,
+//         headers: headers,
+//         insecure: true,
+//         rejectUnauthorized: false // I recommend using these last 2 in case we don't update the SSL cert before it expires... it's happened :(
+//     });
+//     return response;
+// }
 
 /**
  * Deploys governance smart contract (token contract) for a streamer
