@@ -783,8 +783,9 @@ thetaRouter.post("/deploy-governance-contract/:streameruid", async function (req
             const vaultWallet = userData?.vaultWallet;
             await db.collection("users").doc(uid).set({
                 governanceShares: {
-                    payees: [PLATFORM_ADDRESS, vaultWallet],
-                    shares: [100, 9900]
+                    payeeUids: [streamerAddress],
+                    payees: [vaultWallet],
+                    shares: [9900]
                 }
             }, { merge: true });
 
@@ -1656,8 +1657,8 @@ thetaRouter.post("/edit-gov-shares", async function (req: express.Request, res: 
 
             if (result.hash) {
                 // add the platform into the share data
-                newPayees.push(PLATFORM_ADDRESS);
-                newShares.push(100);
+                //newPayees.push(PLATFORM_ADDRESS);
+                //newShares.push(100);
 
                 // write new share data into user
                 await db.collection("users").doc(uid).set({
