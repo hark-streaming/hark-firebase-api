@@ -59,8 +59,9 @@ thetaRouter.get("/tokens/:uid", async function (req: express.Request, res: expre
 });
 
 /**
- * Retrieves data of last 16 tfuel donations
- * (maybe add auth token here if donations should not be public info)
+ * Retrieves data of all tfuel donations of a user
+ * TODO: make option for recent donations
+ * (maybe add auth token here if donations should not be public info?)
  * (granted, it is literally written on the blockchain so...)
  */
 thetaRouter.get("/recent-donations/:uid", async function (req: express.Request, res: express.Response) {
@@ -71,14 +72,19 @@ thetaRouter.get("/recent-donations/:uid", async function (req: express.Request, 
     if (transactionsDoc.exists) {
         const transactionsData = transactionsDoc.data();
 
-        if (transactionsData) {
-            // filter data
-        }
+        // if (transactionsData) {
+        //     console.log(transactionsData);
+        //     const unixMillisMonth = 86400000 * 30;
+        //     const dates:string[] = Object.keys(transactionsData);
+        //     const recent:string[] = dates.filter( timestamp => parseInt(timestamp) > Date.now() - unixMillisMonth);
+        //     let entries = [];
+        //     recent.forEach
+        // }
 
         res.status(200).send({
             success: true,
             status: 200,
-            tokens: transactionsData
+            transactions: transactionsData
         });
         return;
     }
@@ -359,6 +365,7 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
                         transactionSent: sentTimestamp,
                         hash: "",
                         tfuelPaid: amount,
+                        tokenName: "",
                         tokensBought: 0,
                         recipient: streameruid,
                         sender: uid,
@@ -397,20 +404,22 @@ thetaRouter.post("/donate/:streameruid", async function (req: express.Request, r
             // save our current time, that is when transaction was sent
             let sentTimestamp = Date.now();
 
+            // get the name of the token
+            const tokenName = streamerData?.tokenName;
+
             // write down the blockchain transaction hash
             await db.collection("transactions").doc(uid).set({
                 [sentTimestamp]: {
                     transactionSent: sentTimestamp,
                     hash: transaction.hash,
                     tfuelPaid: amount,
+                    tokenName: tokenName,
                     tokensBought: amount * 100,
                     recipient: streameruid,
                     sender: uid,
                 }
             }, { merge: true });
 
-            // get the name of the token
-            const tokenName = streamerData?.tokenName;
 
             // write the amount of governance tokens the donor recieved
             await db.collection("tokens").doc(uid).set({
@@ -1116,7 +1125,7 @@ thetaRouter.post("/deploy-election-poll", async function (req: express.Request, 
             });
             return;
         }
-        if (!pollData?.polls[pollId].deadline || pollData?.polls[pollId].deadline < Date.now() / 1000) {
+        if (!pollData?.polls[pollId].deadline || pollData?.polls[pollId].deadline < Date.now()) {
             // poll has no deadline or is expired
             res.status(200).send({
                 success: false,
