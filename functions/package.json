@@ -18,6 +18,7 @@
   "main": "lib/index.js",
   "dependencies": {
     "@thetalabs/theta-js": "^0.0.46",
+    "ajv": "^6.12.6",
     "axios": "^0.21.1",
     "bignumber.js": "^9.0.1",
     "express-validator": "^6.10.0",
