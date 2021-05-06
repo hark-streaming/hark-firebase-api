@@ -1,7 +1,7 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
 import { firestore } from "firebase-admin";
-import { verifyIdToken } from "../../index";
+import { verifyIdToken } from "../../../old/indexOLD";
 
 // This is the router which will be imported in our
 // api hub (the index.ts which will be sent to Firebase Functions).

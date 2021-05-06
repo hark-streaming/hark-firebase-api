@@ -1,10 +1,16 @@
-import axios from "axios";
+//import axios from "axios";
 import * as express from "express";
-import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+
+import { validate, reg_schema } from "../../validation";
 
 export let userRouter = express.Router();
 
-userRouter.post("/register", async (req: express.Request, res: express.Response) => {
-    
-});
+//const validate = ajv.getSchema("register");
+userRouter.post("/register",
+    validate({ body: reg_schema }),
+    async (req: express.Request, res: express.Response) => {
+        res.status(200).send({
+            hello: "valid"
+        });
+    }
+);

@@ -1,0 +1,48 @@
+{
+    "type": "object",
+    "required": [
+        "username",
+        "email",
+        "password",
+        "role",
+        "ein",
+        "name",
+        "phone",
+        "captcha"
+    ],
+    "properties": {
+        "username": {
+            "type": "string",
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9_.-]*$"
+        },
+        "email": {
+            "type": "string",
+            "format": "email"
+        },
+        "password": {
+            "type": "string",
+            "minLength": 8
+        },
+        "role": {
+            "type": "string",
+            "enum": ["viewer", "streamer"]
+        },
+        "ein": {
+            "type": "integer",
+            "minLength": 9
+        },
+        "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]*$"
+        },
+        "phone": {
+            "type": "integer",
+            "minLength": 10
+        },
+        "captcha": {
+            "type": "string"
+        }
+    },
+    "additionalProperties": false
+}
