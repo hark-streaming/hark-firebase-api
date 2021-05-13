@@ -42,6 +42,9 @@
         },
         "captcha": {
             "type": "string"
+        },
+        "tags": {
+            "type":"object"
         }
     },
     "additionalProperties": false

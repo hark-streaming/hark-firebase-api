@@ -5,7 +5,7 @@ import * as functions from "firebase-functions";
 import * as cors from 'cors';
 
 // Validator Middleware
-import { validationErrorMiddleware } from "./validation";
+import { validationErrorMiddleware } from "./middleware/schemaValidation";
 
 // Routers
 import * as userApi from "./v2/user";

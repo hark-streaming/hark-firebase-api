@@ -1,7 +1,7 @@
 import * as express from "express";
 
 // Export all our schemas
-export const reg_schema = require("./schemas/register_schema.json");
+export const reg_schema = require("../schemas/register_schema.json");
 
 const { Validator, ValidationError } = require("express-json-validator-middleware");
 export const { validate } = new Validator({ allErrors: true });
